@@ -10,14 +10,16 @@ import (
 )
 
 type ssTable struct {
-	file  string
-	index *rbt.Tree
+	file          string
+	index         *rbt.Tree
+	indexInterval int
 }
 
 func NewSsTable(tsvFile string) *ssTable {
 	t := &ssTable{
-		file:  tsvFile,
-		index: rbt.NewWithStringComparator(),
+		file:          tsvFile,
+		index:         rbt.NewWithStringComparator(),
+		indexInterval: 10,
 	}
 
 	t.load(tsvFile)
@@ -40,8 +42,10 @@ func (t *ssTable) load(tsvFile string) error {
 		cols := strings.Split(line, "\t")
 		key := cols[0]
 
-		fmt.Printf("Offset: %d Line: %s\n", offset, line)
-		t.index.Put(key, int64(offset))
+		if i%t.indexInterval == 0 {
+			fmt.Printf("Offset: %d Line: %s\n", offset, line)
+			t.index.Put(key, int64(offset))
+		}
 
 		offset += len(line) + 1
 		i++
@@ -55,16 +59,18 @@ func (t *ssTable) load(tsvFile string) error {
 }
 
 func (t *ssTable) Read(key string) (string, error) {
-	offset, ok := t.index.Get(key)
+	node, ok := t.index.Floor(key)
 
 	if !ok {
 		return "", nil
 	}
 
+	fmt.Printf("Found offset: %v for %v\n", node.Value, node.Key)
+
 	// interface{} to int
-	offsetInt64, ok := offset.(int64)
+	offset, ok := node.Value.(int64)
 	if !ok {
-		return "", fmt.Errorf("invalid offset: %v", offset)
+		return "", fmt.Errorf("invalid offset: %v", node.Value)
 	}
 
 	// open file and seek to offset
@@ -74,30 +80,35 @@ func (t *ssTable) Read(key string) (string, error) {
 	}
 	defer f.Close()
 
-	_, err = f.Seek(offsetInt64, 0)
+	_, err = f.Seek(offset, 0)
 	if err != nil {
 		return "", fmt.Errorf("failed to seek file: %s", err)
 	}
 
+	var value string
+
 	// read line
 	scanner := bufio.NewScanner(f)
-	scanner.Scan()
-	line := scanner.Text()
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		fmt.Printf("Read: %s\n", line)
+
+		// split line and return value
+		cols := strings.Split(line, "\t")
+		if len(cols) != 2 {
+			return "", fmt.Errorf("invalid line: %s", line)
+		}
+
+		if cols[0] == key {
+			value = cols[1]
+			break
+		}
+	}
 
 	if scanner.Err() != nil {
 		return "", fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	// split line and return value
-	cols := strings.Split(line, "\t")
-	if len(cols) != 2 {
-		return "", fmt.Errorf("invalid line: %s", line)
-	}
-
-	// assert key
-	if cols[0] != key {
-		return "", fmt.Errorf("invalid key: %s", key)
-	}
-
-	return cols[1], nil
+	return value, nil
 }

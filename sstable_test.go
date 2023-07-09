@@ -28,13 +28,27 @@ func TestReadSSTable(t *testing.T) {
 
 	ssTable := yuccadb.NewSsTable(testFile)
 
-	value, err := ssTable.Read("0000000042")
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name string
+		key  string
+		want string
+	}{
+		{"key exists on index", "0000000000", "0"},
+		{"key does not exist on index", "0000000042", "42"},
 	}
 
-	if value != "42" {
-		t.Fatalf("expected 42, but got %s", value)
-	}
+	for _, c := range cases {
+		// sub test
+		t.Run(c.name, func(t *testing.T) {
 
+			got, err := ssTable.Read(c.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if got != c.want {
+				t.Fatalf("expected %s, but got %s", c.want, got)
+			}
+		})
+	}
 }
