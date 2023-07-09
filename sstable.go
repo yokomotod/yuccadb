@@ -9,28 +9,31 @@ import (
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
 )
 
-type ssTable struct {
+type SSTable struct {
 	file          string
 	index         *rbt.Tree
 	indexInterval int
 }
 
-func NewSsTable(tsvFile string) *ssTable {
-	t := &ssTable{
+func NewSSTable(tsvFile string) (*SSTable, error) {
+	t := &SSTable{
 		file:          tsvFile,
 		index:         rbt.NewWithStringComparator(),
-		indexInterval: 10,
+		indexInterval: 1000,
 	}
 
-	t.load(tsvFile)
+	err := t.load(tsvFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load file: %s", err)
+	}
 
-	return t
+	return t, nil
 }
 
-func (t *ssTable) load(tsvFile string) error {
+func (t *SSTable) load(tsvFile string) error {
 	f, err := os.Open(tsvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s", err)
+		return fmt.Errorf("failed to open file: %s, %s", tsvFile, err)
 	}
 	defer f.Close()
 
@@ -43,7 +46,7 @@ func (t *ssTable) load(tsvFile string) error {
 		key := cols[0]
 
 		if i%t.indexInterval == 0 {
-			fmt.Printf("Offset: %d Line: %s\n", offset, line)
+			// fmt.Printf("Offset: %d Line: %s\n", offset, line)
 			t.index.Put(key, int64(offset))
 		}
 
@@ -58,7 +61,7 @@ func (t *ssTable) load(tsvFile string) error {
 	return nil
 }
 
-func (t *ssTable) Read(key string) (string, error) {
+func (t *SSTable) Get(key string) (string, error) {
 	node, ok := t.index.Floor(key)
 
 	if !ok {
@@ -92,7 +95,7 @@ func (t *ssTable) Read(key string) (string, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		fmt.Printf("Read: %s\n", line)
+		// fmt.Printf("Read: %s\n", line)
 
 		// split line and return value
 		cols := strings.Split(line, "\t")
