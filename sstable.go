@@ -4,22 +4,26 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
-
-	rbt "github.com/emirpasic/gods/trees/redblacktree"
 )
+
+type indexEntry struct {
+	key    string
+	offset int64
+}
 
 type SSTable struct {
 	file          string
-	index         *rbt.Tree
+	index         []indexEntry
 	indexInterval int
 }
 
 func NewSSTable(tsvFile string) (*SSTable, error) {
 	t := &SSTable{
 		file:          tsvFile,
-		index:         rbt.NewWithStringComparator(),
-		indexInterval: 1000,
+		index:         make([]indexEntry, 0),
+		indexInterval: 1_000,
 	}
 
 	err := t.load(tsvFile)
@@ -47,7 +51,7 @@ func (t *SSTable) load(tsvFile string) error {
 
 		if i%t.indexInterval == 0 {
 			// fmt.Printf("Offset: %d Line: %s\n", offset, line)
-			t.index.Put(key, int64(offset))
+			t.index = append(t.index, indexEntry{key, int64(offset)})
 		}
 
 		offset += len(line) + 1
@@ -62,19 +66,14 @@ func (t *SSTable) load(tsvFile string) error {
 }
 
 func (t *SSTable) Get(key string) (string, error) {
-	node, ok := t.index.Floor(key)
+	offset := t.searchOffset(key)
 
-	if !ok {
+	if offset == -1 {
+		// fmt.Printf("Not found offset: %v\n", key)
 		return "", nil
 	}
 
-	fmt.Printf("Found offset: %v for %v\n", node.Value, node.Key)
-
-	// interface{} to int
-	offset, ok := node.Value.(int64)
-	if !ok {
-		return "", fmt.Errorf("invalid offset: %v", node.Value)
-	}
+	// fmt.Printf("Found offset: %v for %v\n", t.index[i].offset, t.index[i].key)
 
 	// open file and seek to offset
 	f, err := os.Open(t.file)
@@ -114,4 +113,20 @@ func (t *SSTable) Get(key string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func (t *SSTable) searchOffset(key string) int64 {
+	i := sort.Search(len(t.index), func(i int) bool {
+		return t.index[i].key >= key
+	})
+
+	if i >= len(t.index) {
+		return -1
+	}
+
+	if t.index[i].key != key {
+		i = i - 1
+	}
+
+	return t.index[i].offset
 }
