@@ -5,17 +5,19 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	rbt "github.com/emirpasic/gods/trees/redblacktree"
 )
 
 type ssTable struct {
 	file  string
-	index map[string]int
+	index *rbt.Tree
 }
 
 func NewSsTable(tsvFile string) *ssTable {
 	t := &ssTable{
 		file:  tsvFile,
-		index: make(map[string]int),
+		index: rbt.NewWithStringComparator(),
 	}
 
 	t.load(tsvFile)
@@ -31,18 +33,18 @@ func (t *ssTable) load(tsvFile string) error {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	var offset int = 0
+	i, offset := 0, 0
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Printf("Offset: %d Line: %s\n", offset, line)
-
 		cols := strings.Split(line, "\t")
 		key := cols[0]
 
-		t.index[key] = offset
+		fmt.Printf("Offset: %d Line: %s\n", offset, line)
+		t.index.Put(key, int64(offset))
 
 		offset += len(line) + 1
+		i++
 	}
 
 	if scanner.Err() != nil {
@@ -53,10 +55,16 @@ func (t *ssTable) load(tsvFile string) error {
 }
 
 func (t *ssTable) Read(key string) (string, error) {
-	offset, ok := t.index[key]
+	offset, ok := t.index.Get(key)
 
 	if !ok {
 		return "", nil
+	}
+
+	// interface{} to int
+	offsetInt64, ok := offset.(int64)
+	if !ok {
+		return "", fmt.Errorf("invalid offset: %v", offset)
 	}
 
 	// open file and seek to offset
@@ -66,7 +74,7 @@ func (t *ssTable) Read(key string) (string, error) {
 	}
 	defer f.Close()
 
-	_, err = f.Seek(int64(offset), 0)
+	_, err = f.Seek(offsetInt64, 0)
 	if err != nil {
 		return "", fmt.Errorf("failed to seek file: %s", err)
 	}

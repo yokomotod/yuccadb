@@ -36,4 +36,5 @@ func TestReadSSTable(t *testing.T) {
 	if value != "42" {
 		t.Fatalf("expected 42, but got %s", value)
 	}
+
 }
