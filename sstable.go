@@ -66,7 +66,7 @@ func (t *SSTable) load(tsvFile string) error {
 }
 
 func (t *SSTable) Get(key string) (string, error) {
-	offset := t.searchOffset(key)
+	offset, limit := t.searchOffset(key)
 
 	if offset == -1 {
 		// fmt.Printf("Not found offset: %v\n", key)
@@ -87,6 +87,7 @@ func (t *SSTable) Get(key string) (string, error) {
 		return "", fmt.Errorf("failed to seek file: %s", err)
 	}
 
+	scannedLines, scannedBytes := 0, 0
 	var value string
 
 	// read line
@@ -106,6 +107,19 @@ func (t *SSTable) Get(key string) (string, error) {
 			value = cols[1]
 			break
 		}
+
+		scannedLines++
+		scannedBytes += len(line) + 1
+
+		if offset+int64(scannedBytes) >= limit {
+			// reached to next index, means not found
+			return "", nil
+		}
+
+		if scannedLines > t.indexInterval {
+			// should never happen
+			return "", fmt.Errorf("too many scanned lines: %d", scannedLines)
+		}
 	}
 
 	if scanner.Err() != nil {
@@ -115,18 +129,18 @@ func (t *SSTable) Get(key string) (string, error) {
 	return value, nil
 }
 
-func (t *SSTable) searchOffset(key string) int64 {
+func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 	i := sort.Search(len(t.index), func(i int) bool {
 		return t.index[i].key >= key
 	})
 
 	if i >= len(t.index) {
-		return -1
+		return -1, -1
 	}
 
-	if t.index[i].key != key {
-		i = i - 1
+	if t.index[i].key == key {
+		return t.index[i].offset, t.index[i].offset
 	}
 
-	return t.index[i].offset
+	return t.index[i-1].offset, t.index[i].offset
 }

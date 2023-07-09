@@ -57,6 +57,7 @@ func TestSSTable(t *testing.T) {
 	}{
 		{"key exists on index", "0000000000", "0"},
 		{"key does not exist on index", "0000099999", "99999"},
+		{"not found but middle of keys", "0000099999x", ""},
 	}
 
 	for _, c := range cases {
