@@ -1,6 +1,7 @@
 package yuccadb_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -45,7 +46,8 @@ func genTestTsv() error {
 }
 
 func TestSSTable(t *testing.T) {
-	ssTable, err := yuccadb.NewSSTable(testFile)
+	ctx := context.Background()
+	ssTable, err := yuccadb.NewSSTable(ctx, testFile)
 	if err != nil {
 		t.Fatal(err)
 	}

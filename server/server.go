@@ -32,6 +32,7 @@ type putTableReq struct {
 }
 
 func (s *server) PutTable(c *gin.Context) {
+	ctx := c.Request.Context()
 	tableName := c.Param("table")
 
 	var req putTableReq
@@ -42,7 +43,7 @@ func (s *server) PutTable(c *gin.Context) {
 		return
 	}
 
-	table, err := yuccadb.NewSSTable(req.File)
+	table, err := yuccadb.NewSSTable(ctx, req.File)
 	if err != nil {
 		c.JSON(500, gin.H{
 			"message": fmt.Sprintf("failed to create table: %s", err),

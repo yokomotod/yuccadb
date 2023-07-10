@@ -2,10 +2,14 @@ package yuccadb
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
+
+	"cloud.google.com/go/storage"
 )
 
 type indexEntry struct {
@@ -19,14 +23,12 @@ type SSTable struct {
 	indexInterval int
 }
 
-func NewSSTable(tsvFile string) (*SSTable, error) {
+func NewSSTable(ctx context.Context, tsvFile string) (*SSTable, error) {
 	t := &SSTable{
-		file:          tsvFile,
-		index:         make([]indexEntry, 0),
 		indexInterval: 1_000,
 	}
 
-	err := t.load(tsvFile)
+	err := t.load(ctx, tsvFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load file: %s", err)
 	}
@@ -34,7 +36,15 @@ func NewSSTable(tsvFile string) (*SSTable, error) {
 	return t, nil
 }
 
-func (t *SSTable) load(tsvFile string) error {
+func (t *SSTable) load(ctx context.Context, tsvFile string) error {
+	if strings.HasPrefix(tsvFile, "gs://") {
+		var err error
+		tsvFile, err = t.download(ctx, tsvFile)
+		if err != nil {
+			return fmt.Errorf("failed to download file: %s", err)
+		}
+	}
+
 	f, err := os.Open(tsvFile)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %s, %s", tsvFile, err)
@@ -43,6 +53,8 @@ func (t *SSTable) load(tsvFile string) error {
 
 	scanner := bufio.NewScanner(f)
 	i, offset := 0, 0
+
+	t.index = make([]indexEntry, 0)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -62,7 +74,43 @@ func (t *SSTable) load(tsvFile string) error {
 		return fmt.Errorf("failed to scan file: %s", err)
 	}
 
+	t.file = tsvFile
+
 	return nil
+}
+
+func (t *SSTable) download(ctx context.Context, gcsPath string) (string, error) {
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("storage.NewClient: %w", err)
+	}
+	defer client.Close()
+
+	pathSegments := strings.Split(gcsPath, "/")
+
+	bucket := pathSegments[2]
+	object := strings.Join(pathSegments[3:], "/")
+	basename := pathSegments[len(pathSegments)-1]
+
+	f, err := os.Create(basename)
+	if err != nil {
+		return "", fmt.Errorf("os.Create: %w", err)
+	}
+	defer f.Close()
+
+	rc, err := client.Bucket(bucket).Object(object).NewReader(ctx)
+	if err != nil {
+		return "", fmt.Errorf("Object(%q).NewReader: %w", object, err)
+	}
+	defer rc.Close()
+
+	fmt.Printf("Downloading %v from %v\n", object, bucket)
+	if _, err := io.Copy(f, rc); err != nil {
+		return "", fmt.Errorf("io.Copy: %w", err)
+	}
+	fmt.Printf("Downloaded %v\n", object)
+
+	return basename, nil
 }
 
 func (t *SSTable) Get(key string) (string, error) {
