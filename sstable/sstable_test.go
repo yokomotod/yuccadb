@@ -2,7 +2,7 @@ package sstable_test
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,7 +23,7 @@ func TestLoadError(t *testing.T) {
 	content := strings.Join(lines, "\n")
 	brokenFile := filepath.Join(tempDir, "broken.tsv")
 
-	if err := ioutil.WriteFile(brokenFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(brokenFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,7 +37,7 @@ func TestLoadError(t *testing.T) {
 	}
 
 	// check tempDataDir is empty
-	files, err := ioutil.ReadDir(tempDataDir)
+	files, err := os.ReadDir(tempDataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
