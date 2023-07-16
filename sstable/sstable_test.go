@@ -1,4 +1,4 @@
-package yuccadb_test
+package sstable_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yokomotod/yuccadb"
+	"github.com/yokomotod/yuccadb/sstable"
 )
 
 func TestMain(m *testing.M) {
@@ -30,7 +30,7 @@ func testFileName() string {
 	for i := 0; s >= 1_000; s, i = s/1_000, i+1 {
 		unit = units[i]
 	}
-	return fmt.Sprintf("testdata/test%d%s.tsv", s, unit)
+	return fmt.Sprintf("../testdata/test%d%s.tsv", s, unit)
 
 }
 
@@ -64,7 +64,7 @@ func genTestTsv(testFile string) error {
 func TestSSTable(t *testing.T) {
 	ctx := context.Background()
 	testFile := testFileName()
-	ssTable, err := yuccadb.NewSSTable(ctx, testFile)
+	ssTable, err := sstable.NewSSTable(ctx, testFile)
 	if err != nil {
 		t.Fatal(err)
 	}

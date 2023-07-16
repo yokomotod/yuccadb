@@ -4,17 +4,16 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/yokomotod/yuccadb"
+	"github.com/yokomotod/yuccadb/sstable"
 )
 
 type server struct {
-	tables map[string]*yuccadb.SSTable
+	tables map[string]*sstable.SSTable
 }
 
 func NewServer() *server {
 	return &server{
-		tables: make(map[string]*yuccadb.SSTable),
+		tables: make(map[string]*sstable.SSTable),
 	}
 }
 
@@ -43,7 +42,7 @@ func (s *server) PutTable(c *gin.Context) {
 		return
 	}
 
-	table, err := yuccadb.NewSSTable(ctx, req.File)
+	table, err := sstable.NewSSTable(ctx, req.File)
 	if err != nil {
 		c.JSON(500, gin.H{
 			"message": fmt.Sprintf("failed to create table: %s", err),

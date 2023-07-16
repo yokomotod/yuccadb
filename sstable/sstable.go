@@ -1,4 +1,4 @@
-package yuccadb
+package sstable
 
 import (
 	"bufio"
