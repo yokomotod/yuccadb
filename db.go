@@ -20,6 +20,10 @@ func NewYuccaDB(ctx context.Context, dataDir string) (*YuccaDB, error) {
 		tables:  make(map[string]*sstable.SSTable),
 	}
 
+	if err := os.MkdirAll(dataDir, 0775); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %s", err)
+	}
+
 	if err := db.loadExistingTables(ctx); err != nil {
 		return nil, fmt.Errorf("failed to load existing tables: %s", err)
 	}

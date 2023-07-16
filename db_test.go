@@ -69,7 +69,7 @@ func TestDB(t *testing.T) {
 	if err := os.RemoveAll(dataDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0775); err != nil {
 		t.Fatal(err)
 	}
 

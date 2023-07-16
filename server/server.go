@@ -12,8 +12,8 @@ type server struct {
 	db *yuccadb.YuccaDB
 }
 
-func NewServer(ctx context.Context) (*server, error) {
-	db, err := yuccadb.NewYuccaDB(ctx, "./data")
+func NewServer(ctx context.Context, dataDir string) (*server, error) {
+	db, err := yuccadb.NewYuccaDB(ctx, dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create db: %s", err)
 	}
@@ -23,13 +23,13 @@ func NewServer(ctx context.Context) (*server, error) {
 	}, nil
 }
 
-func (s *server) Run() error {
+func (s *server) Run(addr string) error {
 	r := gin.Default()
 
 	r.PUT("/:table", s.PutTable)
 	r.GET("/:table/:key", s.GetValue)
 
-	return r.Run()
+	return r.Run(addr)
 }
 
 type putTableReq struct {
