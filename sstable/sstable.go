@@ -53,9 +53,16 @@ func (t *SSTable) load(ctx context.Context, tableName, srcFile string) error {
 		return fmt.Errorf("failed to try load: %s", err)
 	}
 
-	err = os.Rename(tmpFile, localFile)
-	if err != nil {
-		return fmt.Errorf("failed to rename file: %s", err)
+	if tmpFile != localFile {
+		if _, err := os.Stat(localFile); err == nil {
+			return fmt.Errorf("file already exists: %s", localFile)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		err = os.Rename(tmpFile, localFile)
+		if err != nil {
+			return fmt.Errorf("failed to rename file: %s", err)
+		}
 	}
 
 	t.index = index
@@ -122,7 +129,8 @@ func download(ctx context.Context, localFile, gcsPath string) error {
 	}
 	defer client.Close()
 
-	f, err := os.Create(localFile)
+	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
+	f, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return fmt.Errorf("os.Create: %w", err)
 	}
@@ -159,7 +167,8 @@ func copy(localFile, srcPath string) error {
 	}
 	defer src.Close()
 
-	dst, err := os.Create(localFile)
+	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
+	dst, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %s", err)
 	}

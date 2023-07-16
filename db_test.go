@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yokomotod/yuccadb"
@@ -69,7 +71,7 @@ func TestDB(t *testing.T) {
 	if err := os.RemoveAll(dataDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dataDir, 0775); err != nil {
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -118,5 +120,36 @@ func TestDB(t *testing.T) {
 				t.Fatalf("expected %s, but got %s", c.want, got)
 			}
 		})
+	}
+}
+
+func TestDuplicateTableError(t *testing.T) {
+	ctx := context.Background()
+
+	tempDir := t.TempDir()
+	tempDataDir := t.TempDir()
+
+	lines := []string{"key\tvalue"}
+	content := strings.Join(lines, "\n")
+	testFile := filepath.Join(tempDir, "test.tsv")
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := yuccadb.NewYuccaDB(ctx, tempDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateTable(ctx, "test", testFile); err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.CreateTable(ctx, "test", testFile)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	expectedErr := "table test already exists"
+	if err.Error() != expectedErr {
+		t.Fatalf("expected error %s, but got %s", expectedErr, err.Error())
 	}
 }

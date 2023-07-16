@@ -20,7 +20,7 @@ func NewYuccaDB(ctx context.Context, dataDir string) (*YuccaDB, error) {
 		tables:  make(map[string]*sstable.SSTable),
 	}
 
-	if err := os.MkdirAll(dataDir, 0775); err != nil {
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %s", err)
 	}
 
@@ -54,11 +54,18 @@ func (db *YuccaDB) loadExistingTables(ctx context.Context) error {
 }
 
 func (db *YuccaDB) CreateTable(ctx context.Context, tableName, file string) error {
+	if _, ok := db.tables[tableName]; ok {
+		return fmt.Errorf("table %s already exists", tableName)
+	}
+
 	table, err := sstable.NewSSTable(ctx, tableName, file, db.dataDir)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %s", err)
 	}
 
+	if _, ok := db.tables[tableName]; ok {
+		return fmt.Errorf("table %s already exists", tableName)
+	}
 	db.tables[tableName] = table
 
 	return nil
