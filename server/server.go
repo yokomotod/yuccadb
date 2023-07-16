@@ -9,7 +9,8 @@ import (
 )
 
 type server struct {
-	db *yuccadb.YuccaDB
+	db    *yuccadb.YuccaDB
+	nodes []string
 }
 
 func NewServer(ctx context.Context, dataDir string) (*server, error) {
@@ -19,7 +20,8 @@ func NewServer(ctx context.Context, dataDir string) (*server, error) {
 	}
 
 	return &server{
-		db: db,
+		db:    db,
+		nodes: []string{},
 	}, nil
 }
 
@@ -48,7 +50,7 @@ func (s *server) PutTable(c *gin.Context) {
 		return
 	}
 
-	if err := s.db.CreateTable(ctx, tableName, req.File); err != nil {
+	if err := s.db.PutTable(ctx, tableName, req.File); err != nil {
 		c.JSON(500, gin.H{
 			"message": fmt.Sprintf("failed to create table: %s", err),
 		})

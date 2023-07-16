@@ -4,12 +4,9 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
-
-	"cloud.google.com/go/storage"
 )
 
 type indexEntry struct {
@@ -18,15 +15,13 @@ type indexEntry struct {
 }
 
 type SSTable struct {
-	dataDir       string
-	file          string
+	File          string
 	index         []indexEntry
 	indexInterval int
 }
 
-func NewSSTable(ctx context.Context, name, tsvFile, dataDir string) (*SSTable, error) {
+func NewSSTable(ctx context.Context, name, tsvFile string) (*SSTable, error) {
 	t := &SSTable{
-		dataDir:       dataDir,
 		indexInterval: 1_000,
 	}
 
@@ -38,75 +33,29 @@ func NewSSTable(ctx context.Context, name, tsvFile, dataDir string) (*SSTable, e
 	return t, nil
 }
 
-func (t *SSTable) load(ctx context.Context, tableName, srcFile string) error {
-	localFile := fmt.Sprintf("%s/%s.tsv", t.dataDir, tableName)
-	tmpFile := fmt.Sprintf("%s.tmp", localFile)
-	if localFile == srcFile {
-		tmpFile = localFile
-	}
-
-	index, count, err := tryLoad(ctx, srcFile, tmpFile, t.indexInterval)
+func (t *SSTable) load(ctx context.Context, tableName, tsvFile string) error {
+	f, err := os.Open(tsvFile)
 	if err != nil {
-		if tmpFile != localFile {
-			_ = os.Remove(tmpFile)
-		}
-		return fmt.Errorf("failed to try load: %s", err)
-	}
-
-	if tmpFile != localFile {
-		if _, err := os.Stat(localFile); err == nil {
-			return fmt.Errorf("file already exists: %s", localFile)
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-		err = os.Rename(tmpFile, localFile)
-		if err != nil {
-			return fmt.Errorf("failed to rename file: %s", err)
-		}
-	}
-
-	t.index = index
-	t.file = localFile
-
-	fmt.Printf("Loaded %s, %d items\n", localFile, count)
-	return nil
-}
-
-func tryLoad(ctx context.Context, srcFile, tmpFile string, indexInterval int) (index []indexEntry, count int, err error) {
-	if strings.HasPrefix(srcFile, "gs://") {
-		err := download(ctx, tmpFile, srcFile)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to download file: %s", err)
-		}
-	} else {
-		err := copy(tmpFile, srcFile)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to copy file: %s", err)
-		}
-	}
-
-	f, err := os.Open(tmpFile)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to open file: %s, %s", tmpFile, err)
+		return fmt.Errorf("failed to open file: %s, %s", tsvFile, err)
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	offset := 0
 
-	index = make([]indexEntry, 0)
+	count, offset := 0, 0
+	index := make([]indexEntry, 0)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		cols := strings.Split(line, "\t")
 
 		if len(cols) != 2 {
-			return nil, 0, fmt.Errorf("invalid line: %s", line)
+			return fmt.Errorf("invalid line: %s", line)
 		}
 
 		key := cols[0]
 
-		if count%indexInterval == 0 {
+		if count%t.indexInterval == 0 {
 			// fmt.Printf("Offset: %d Line: %s\n", offset, line)
 			index = append(index, indexEntry{key, int64(offset)})
 		}
@@ -116,71 +65,13 @@ func tryLoad(ctx context.Context, srcFile, tmpFile string, indexInterval int) (i
 	}
 
 	if scanner.Err() != nil {
-		return nil, 0, fmt.Errorf("failed to scan file: %s", err)
+		return fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	return index, count, nil
-}
+	t.File = tsvFile
+	t.index = index
 
-func download(ctx context.Context, localFile, gcsPath string) error {
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("storage.NewClient: %w", err)
-	}
-	defer client.Close()
-
-	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
-	f, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
-	if err != nil {
-		return fmt.Errorf("os.Create: %w", err)
-	}
-	defer f.Close()
-
-	pathSegments := strings.Split(gcsPath, "/")
-	bucket := pathSegments[2]
-	object := strings.Join(pathSegments[3:], "/")
-
-	rc, err := client.Bucket(bucket).Object(object).NewReader(ctx)
-	if err != nil {
-		return fmt.Errorf("Object(%q).NewReader: %w", object, err)
-	}
-	defer rc.Close()
-
-	fmt.Printf("Downloading %v from %v\n", object, bucket)
-	if _, err := io.Copy(f, rc); err != nil {
-		return fmt.Errorf("io.Copy: %w", err)
-	}
-	fmt.Printf("Downloaded %v\n", object)
-
-	return nil
-}
-
-func copy(localFile, srcPath string) error {
-	if localFile == srcPath {
-		fmt.Printf("Skip copying %v\n", srcPath)
-		return nil
-	}
-
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %s", err)
-	}
-	defer src.Close()
-
-	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
-	dst, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %s", err)
-	}
-	defer dst.Close()
-
-	fmt.Printf("Copying %v to %v\n", srcPath, localFile)
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("failed to copy file: %s", err)
-	}
-
-	fmt.Printf("Copied %v\n", srcPath)
-
+	fmt.Printf("Loaded %s, %d items\n", tsvFile, count)
 	return nil
 }
 
@@ -195,7 +86,7 @@ func (t *SSTable) Get(key string) (value string, keyExists bool, err error) {
 	// fmt.Printf("Found offset: %v for %v\n", t.index[i].offset, t.index[i].key)
 
 	// open file and seek to offset
-	f, err := os.Open(t.file)
+	f, err := os.Open(t.File)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to open file: %s", err)
 	}

@@ -79,7 +79,7 @@ func TestDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateTable(ctx, testTableName, testFile); err != nil {
+	if err := db.PutTable(ctx, testTableName, testFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,6 +123,50 @@ func TestDB(t *testing.T) {
 	}
 }
 
+func TestLoadError(t *testing.T) {
+	ctx := context.Background()
+
+	tempDir := t.TempDir()
+	tempDataDir := t.TempDir()
+
+	lines := []string{
+		"key\tvalue",
+		"broken",
+	}
+	content := strings.Join(lines, "\n")
+	brokenFile := filepath.Join(tempDir, "broken.tsv")
+
+	if err := os.WriteFile(brokenFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := yuccadb.NewYuccaDB(ctx, tempDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.PutTable(ctx, "broken", brokenFile)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	expectedErr := " invalid line:"
+	if !strings.Contains(err.Error(), expectedErr) {
+		t.Fatalf("expected %q to include %q", err.Error(), expectedErr)
+	}
+
+	// check tempDataDir is empty
+	files, err := os.ReadDir(tempDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		filenames := make([]string, len(files))
+		for i, f := range files {
+			filenames[i] = f.Name()
+		}
+		t.Fatalf("expected 0 files, but found %s", filenames)
+	}
+}
+
 func TestDuplicateTableError(t *testing.T) {
 	ctx := context.Background()
 
@@ -140,11 +184,11 @@ func TestDuplicateTableError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateTable(ctx, "test", testFile); err != nil {
+	if err := db.PutTable(ctx, "test", testFile); err != nil {
 		t.Fatal(err)
 	}
 
-	err = db.CreateTable(ctx, "test", testFile)
+	err = db.PutTable(ctx, "test", testFile)
 	if err == nil {
 		t.Fatal("expected error")
 	}
