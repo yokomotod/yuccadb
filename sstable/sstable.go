@@ -41,10 +41,15 @@ func NewSSTable(ctx context.Context, name, tsvFile, dataDir string) (*SSTable, e
 func (t *SSTable) load(ctx context.Context, tableName, srcFile string) error {
 	localFile := fmt.Sprintf("%s/%s.tsv", t.dataDir, tableName)
 	tmpFile := fmt.Sprintf("%s.tmp", localFile)
+	if localFile == srcFile {
+		tmpFile = localFile
+	}
 
 	index, count, err := tryLoad(ctx, srcFile, tmpFile, t.indexInterval)
 	if err != nil {
-		_ = os.Remove(tmpFile)
+		if tmpFile != localFile {
+			_ = os.Remove(tmpFile)
+		}
 		return fmt.Errorf("failed to try load: %s", err)
 	}
 
