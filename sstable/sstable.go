@@ -40,54 +40,77 @@ func NewSSTable(ctx context.Context, name, tsvFile, dataDir string) (*SSTable, e
 
 func (t *SSTable) load(ctx context.Context, tableName, srcFile string) error {
 	localFile := fmt.Sprintf("%s/%s.tsv", t.dataDir, tableName)
+	tmpFile := fmt.Sprintf("%s.tmp", localFile)
 
+	index, count, err := tryLoad(ctx, srcFile, tmpFile, t.indexInterval)
+	if err != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to try load: %s", err)
+	}
+
+	err = os.Rename(tmpFile, localFile)
+	if err != nil {
+		return fmt.Errorf("failed to rename file: %s", err)
+	}
+
+	t.index = index
+	t.file = localFile
+
+	fmt.Printf("Loaded %s, %d items\n", localFile, count)
+	return nil
+}
+
+func tryLoad(ctx context.Context, srcFile, tmpFile string, indexInterval int) (index []indexEntry, count int, err error) {
 	if strings.HasPrefix(srcFile, "gs://") {
-		err := t.download(ctx, localFile, srcFile)
+		err := download(ctx, tmpFile, srcFile)
 		if err != nil {
-			return fmt.Errorf("failed to download file: %s", err)
+			return nil, 0, fmt.Errorf("failed to download file: %s", err)
 		}
 	} else {
-		err := t.copy(localFile, srcFile)
+		err := copy(tmpFile, srcFile)
 		if err != nil {
-			return fmt.Errorf("failed to copy file: %s", err)
+			return nil, 0, fmt.Errorf("failed to copy file: %s", err)
 		}
 	}
 
-	f, err := os.Open(localFile)
+	f, err := os.Open(tmpFile)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s, %s", localFile, err)
+		return nil, 0, fmt.Errorf("failed to open file: %s, %s", tmpFile, err)
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	i, offset := 0, 0
+	offset := 0
 
-	t.index = make([]indexEntry, 0)
+	index = make([]indexEntry, 0)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		cols := strings.Split(line, "\t")
+
+		if len(cols) != 2 {
+			return nil, 0, fmt.Errorf("invalid line: %s", line)
+		}
+
 		key := cols[0]
 
-		if i%t.indexInterval == 0 {
+		if count%indexInterval == 0 {
 			// fmt.Printf("Offset: %d Line: %s\n", offset, line)
-			t.index = append(t.index, indexEntry{key, int64(offset)})
+			index = append(index, indexEntry{key, int64(offset)})
 		}
 
 		offset += len(line) + 1
-		i++
+		count++
 	}
 
 	if scanner.Err() != nil {
-		return fmt.Errorf("failed to scan file: %s", err)
+		return nil, 0, fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	t.file = srcFile
-
-	return nil
+	return index, count, nil
 }
 
-func (t *SSTable) download(ctx context.Context, localFile, gcsPath string) error {
+func download(ctx context.Context, localFile, gcsPath string) error {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return fmt.Errorf("storage.NewClient: %w", err)
@@ -119,7 +142,7 @@ func (t *SSTable) download(ctx context.Context, localFile, gcsPath string) error
 	return nil
 }
 
-func (t *SSTable) copy(localFile, srcPath string) error {
+func copy(localFile, srcPath string) error {
 	if localFile == srcPath {
 		fmt.Printf("Skip copying %v\n", srcPath)
 		return nil
