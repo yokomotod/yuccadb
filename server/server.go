@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -11,10 +12,15 @@ type server struct {
 	db *yuccadb.YuccaDB
 }
 
-func NewServer() *server {
-	return &server{
-		db: yuccadb.NewYuccaDB("./data"),
+func NewServer(ctx context.Context) (*server, error) {
+	db, err := yuccadb.NewYuccaDB(ctx, "./data")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create db: %s", err)
 	}
+
+	return &server{
+		db: db,
+	}, nil
 }
 
 func (s *server) Run() error {

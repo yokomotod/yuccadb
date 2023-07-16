@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -18,5 +19,10 @@ func main() {
 }
 
 func runServer() error {
-	return server.NewServer().Run()
+	server, err := server.NewServer(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to create server: %s", err)
+	}
+
+	return server.Run()
 }

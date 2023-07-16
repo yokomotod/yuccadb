@@ -32,7 +32,7 @@ func NewSSTable(ctx context.Context, name, tsvFile, dataDir string) (*SSTable, e
 
 	err := t.load(ctx, name, tsvFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load file: %s", err)
+		return nil, fmt.Errorf("failed to load table: %s", err)
 	}
 
 	return t, nil
@@ -120,6 +120,11 @@ func (t *SSTable) download(ctx context.Context, localFile, gcsPath string) error
 }
 
 func (t *SSTable) copy(localFile, srcPath string) error {
+	if localFile == srcPath {
+		fmt.Printf("Skip copying %v\n", srcPath)
+		return nil
+	}
+
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %s", err)

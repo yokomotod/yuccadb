@@ -65,27 +65,45 @@ func TestDB(t *testing.T) {
 	ctx := context.Background()
 	dataDir, testTableName, testFile := "./testdata", "test", testFileName()
 
-	db := yuccadb.NewYuccaDB(dataDir)
+	// (re-)create data dir
+	if err := os.RemoveAll(dataDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := yuccadb.NewYuccaDB(ctx, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := db.CreateTable(ctx, testTableName, testFile); err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := yuccadb.NewYuccaDB(ctx, dataDir)
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	cases := []struct {
 		name          string
+		db            *yuccadb.YuccaDB
 		key           string
 		want          string
 		wantKeyExists bool
 	}{
-		{"key exists on index", "0000000000", "0", true},
-		{"key does not exist on index", "0000099999", "99999", true},
-		{"not found but middle of keys", "0000099999x", "", false},
+		{"key exists on index", db, "0000000000", "0", true},
+		{"key does not exist on index", db, "0000099999", "99999", true},
+		{"not found but middle of keys", db, "0000099999x", "", false},
+		{"key exists on reloaded index", db2, "0000000000", "0", true},
 	}
 
 	for _, c := range cases {
 		// sub test
 		t.Run(c.name, func(t *testing.T) {
 
-			got, tableExists, keyExists, err := db.GetValue(testTableName, c.key)
+			got, tableExists, keyExists, err := c.db.GetValue(testTableName, c.key)
 			if err != nil {
 				t.Fatal(err)
 			}
