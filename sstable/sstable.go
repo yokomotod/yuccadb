@@ -18,17 +18,19 @@ type indexEntry struct {
 }
 
 type SSTable struct {
+	dataDir       string
 	file          string
 	index         []indexEntry
 	indexInterval int
 }
 
-func NewSSTable(ctx context.Context, tsvFile string) (*SSTable, error) {
+func NewSSTable(ctx context.Context, name, tsvFile, dataDir string) (*SSTable, error) {
 	t := &SSTable{
+		dataDir:       dataDir,
 		indexInterval: 1_000,
 	}
 
-	err := t.load(ctx, tsvFile)
+	err := t.load(ctx, name, tsvFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load file: %s", err)
 	}
@@ -36,18 +38,24 @@ func NewSSTable(ctx context.Context, tsvFile string) (*SSTable, error) {
 	return t, nil
 }
 
-func (t *SSTable) load(ctx context.Context, tsvFile string) error {
-	if strings.HasPrefix(tsvFile, "gs://") {
-		var err error
-		tsvFile, err = t.download(ctx, tsvFile)
+func (t *SSTable) load(ctx context.Context, tableName, srcFile string) error {
+	localFile := fmt.Sprintf("%s/%s.tsv", t.dataDir, tableName)
+
+	if strings.HasPrefix(srcFile, "gs://") {
+		err := t.download(ctx, localFile, srcFile)
 		if err != nil {
 			return fmt.Errorf("failed to download file: %s", err)
 		}
+	} else {
+		err := t.copy(localFile, srcFile)
+		if err != nil {
+			return fmt.Errorf("failed to copy file: %s", err)
+		}
 	}
 
-	f, err := os.Open(tsvFile)
+	f, err := os.Open(localFile)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s, %s", tsvFile, err)
+		return fmt.Errorf("failed to open file: %s, %s", localFile, err)
 	}
 	defer f.Close()
 
@@ -74,43 +82,64 @@ func (t *SSTable) load(ctx context.Context, tsvFile string) error {
 		return fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	t.file = tsvFile
+	t.file = srcFile
 
 	return nil
 }
 
-func (t *SSTable) download(ctx context.Context, gcsPath string) (string, error) {
+func (t *SSTable) download(ctx context.Context, localFile, gcsPath string) error {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		return "", fmt.Errorf("storage.NewClient: %w", err)
+		return fmt.Errorf("storage.NewClient: %w", err)
 	}
 	defer client.Close()
 
-	pathSegments := strings.Split(gcsPath, "/")
-
-	bucket := pathSegments[2]
-	object := strings.Join(pathSegments[3:], "/")
-	basename := pathSegments[len(pathSegments)-1]
-
-	f, err := os.Create(basename)
+	f, err := os.Create(localFile)
 	if err != nil {
-		return "", fmt.Errorf("os.Create: %w", err)
+		return fmt.Errorf("os.Create: %w", err)
 	}
 	defer f.Close()
 
+	pathSegments := strings.Split(gcsPath, "/")
+	bucket := pathSegments[2]
+	object := strings.Join(pathSegments[3:], "/")
+
 	rc, err := client.Bucket(bucket).Object(object).NewReader(ctx)
 	if err != nil {
-		return "", fmt.Errorf("Object(%q).NewReader: %w", object, err)
+		return fmt.Errorf("Object(%q).NewReader: %w", object, err)
 	}
 	defer rc.Close()
 
 	fmt.Printf("Downloading %v from %v\n", object, bucket)
 	if _, err := io.Copy(f, rc); err != nil {
-		return "", fmt.Errorf("io.Copy: %w", err)
+		return fmt.Errorf("io.Copy: %w", err)
 	}
 	fmt.Printf("Downloaded %v\n", object)
 
-	return basename, nil
+	return nil
+}
+
+func (t *SSTable) copy(localFile, srcPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %s", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(localFile)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %s", err)
+	}
+	defer dst.Close()
+
+	fmt.Printf("Copying %v to %v\n", srcPath, localFile)
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy file: %s", err)
+	}
+
+	fmt.Printf("Copied %v\n", srcPath)
+
+	return nil
 }
 
 func (t *SSTable) Get(key string) (value string, keyExists bool, err error) {

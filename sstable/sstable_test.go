@@ -30,7 +30,7 @@ func testFileName() string {
 	for i := 0; s >= 1_000; s, i = s/1_000, i+1 {
 		unit = units[i]
 	}
-	return fmt.Sprintf("../testdata/test%d%s.tsv", s, unit)
+	return fmt.Sprintf("../testfile/test%d%s.tsv", s, unit)
 
 }
 
@@ -63,8 +63,9 @@ func genTestTsv(testFile string) error {
 
 func TestSSTable(t *testing.T) {
 	ctx := context.Background()
-	testFile := testFileName()
-	ssTable, err := sstable.NewSSTable(ctx, testFile)
+	dataDir, testTableName, testFile := "../testdata", "test", testFileName()
+
+	ssTable, err := sstable.NewSSTable(ctx, testTableName, testFile, dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
