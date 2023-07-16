@@ -10,7 +10,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	err := genTestTsv()
+	err := genTestTsv(testFileName())
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -22,9 +22,25 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-const testFile = "test.tsv"
+const size = 1_000_000
 
-func genTestTsv() error {
+func testFileName() string {
+	s, unit := size, ""
+	units := []string{"k", "m", "g", "t"}
+	for i := 0; s >= 1_000; s, i = s/1_000, i+1 {
+		unit = units[i]
+	}
+	return fmt.Sprintf("testdata/test%d%s.tsv", s, unit)
+
+}
+
+func genTestTsv(testFile string) error {
+	// check test file exists and skip generating
+	if _, err := os.Stat(testFile); err == nil {
+		fmt.Printf("Skip generating %s\n", testFile)
+		return nil
+	}
+
 	fmt.Printf("Generating %s...\n", testFile)
 
 	f, err := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE, 0644)
@@ -32,7 +48,7 @@ func genTestTsv() error {
 		return fmt.Errorf("failed to open file: %s", err)
 	}
 
-	for i := 0; i < 10_000_000; i++ {
+	for i := 0; i < size; i++ {
 		key := fmt.Sprintf("%010d", i)
 		value := fmt.Sprint(i)
 
@@ -47,6 +63,7 @@ func genTestTsv() error {
 
 func TestSSTable(t *testing.T) {
 	ctx := context.Background()
+	testFile := testFileName()
 	ssTable, err := yuccadb.NewSSTable(ctx, testFile)
 	if err != nil {
 		t.Fatal(err)
