@@ -4,16 +4,16 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yokomotod/yuccadb/sstable"
+	"github.com/yokomotod/yuccadb"
 )
 
 type server struct {
-	tables map[string]*sstable.SSTable
+	db *yuccadb.YuccaDB
 }
 
 func NewServer() *server {
 	return &server{
-		tables: make(map[string]*sstable.SSTable),
+		db: yuccadb.NewYuccaDB(),
 	}
 }
 
@@ -42,15 +42,12 @@ func (s *server) PutTable(c *gin.Context) {
 		return
 	}
 
-	table, err := sstable.NewSSTable(ctx, req.File)
-	if err != nil {
+	if err := s.db.PutTable(ctx, tableName, req.File); err != nil {
 		c.JSON(500, gin.H{
 			"message": fmt.Sprintf("failed to create table: %s", err),
 		})
 		return
 	}
-
-	s.tables[tableName] = table
 
 	c.JSON(200, gin.H{
 		"message": fmt.Sprintf("%s table is created", tableName),
@@ -58,20 +55,25 @@ func (s *server) PutTable(c *gin.Context) {
 }
 
 func (s *server) GetValue(c *gin.Context) {
-	tableName := c.Param("table")
-	ssTable, ok := s.tables[tableName]
-	if !ok {
+	tableName, key := c.Param("table"), c.Param("key")
+	value, tableExists, keyExists, err := s.db.GetValue(tableName, key)
+
+	if !tableExists {
 		c.JSON(404, gin.H{
 			"message": fmt.Sprintf("%s table is not found", tableName),
 		})
 		return
 	}
 
-	key := c.Param("key")
-	value, err := ssTable.Get(key)
 	if err != nil {
 		c.JSON(500, gin.H{
 			"message": fmt.Sprintf("failed to get value: %s", err),
+		})
+		return
+	}
+	if !keyExists {
+		c.JSON(200, gin.H{
+			"value": nil,
 		})
 		return
 	}

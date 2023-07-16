@@ -113,12 +113,12 @@ func (t *SSTable) download(ctx context.Context, gcsPath string) (string, error) 
 	return basename, nil
 }
 
-func (t *SSTable) Get(key string) (string, error) {
+func (t *SSTable) Get(key string) (value string, keyExists bool, err error) {
 	offset, limit := t.searchOffset(key)
 
 	if offset == -1 {
 		// fmt.Printf("Not found offset: %v\n", key)
-		return "", nil
+		return "", false, nil
 	}
 
 	// fmt.Printf("Found offset: %v for %v\n", t.index[i].offset, t.index[i].key)
@@ -126,17 +126,16 @@ func (t *SSTable) Get(key string) (string, error) {
 	// open file and seek to offset
 	f, err := os.Open(t.file)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %s", err)
+		return "", false, fmt.Errorf("failed to open file: %s", err)
 	}
 	defer f.Close()
 
 	_, err = f.Seek(offset, 0)
 	if err != nil {
-		return "", fmt.Errorf("failed to seek file: %s", err)
+		return "", false, fmt.Errorf("failed to seek file: %s", err)
 	}
 
 	scannedLines, scannedBytes := 0, 0
-	var value string
 
 	// read line
 	scanner := bufio.NewScanner(f)
@@ -148,7 +147,7 @@ func (t *SSTable) Get(key string) (string, error) {
 		// split line and return value
 		cols := strings.Split(line, "\t")
 		if len(cols) != 2 {
-			return "", fmt.Errorf("invalid line: %s", line)
+			return "", false, fmt.Errorf("invalid line: %s", line)
 		}
 
 		if cols[0] == key {
@@ -161,20 +160,20 @@ func (t *SSTable) Get(key string) (string, error) {
 
 		if offset+int64(scannedBytes) >= limit {
 			// reached to next index, means not found
-			return "", nil
+			return "", false, nil
 		}
 
 		if scannedLines > t.indexInterval {
 			// should never happen
-			return "", fmt.Errorf("too many scanned lines: %d", scannedLines)
+			return "", false, fmt.Errorf("too many scanned lines: %d", scannedLines)
 		}
 	}
 
 	if scanner.Err() != nil {
-		return "", fmt.Errorf("failed to scan file: %s", err)
+		return "", false, fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	return value, nil
+	return value, true, nil
 }
 
 func (t *SSTable) searchOffset(key string) (offset, limit int64) {

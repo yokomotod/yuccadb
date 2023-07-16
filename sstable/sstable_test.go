@@ -70,24 +70,28 @@ func TestSSTable(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		key  string
-		want string
+		name          string
+		key           string
+		want          string
+		wantKeyExists bool
 	}{
-		{"key exists on index", "0000000000", "0"},
-		{"key does not exist on index", "0000099999", "99999"},
-		{"not found but middle of keys", "0000099999x", ""},
+		{"key exists on index", "0000000000", "0", true},
+		{"key does not exist on index", "0000099999", "99999", true},
+		{"not found but middle of keys", "0000099999x", "", false},
 	}
 
 	for _, c := range cases {
 		// sub test
 		t.Run(c.name, func(t *testing.T) {
 
-			got, err := ssTable.Get(c.key)
+			got, keyExists, err := ssTable.Get(c.key)
 			if err != nil {
 				t.Fatal(err)
 			}
 
+			if keyExists != c.wantKeyExists {
+				t.Fatalf("expected keyExists %t, but got %t", c.wantKeyExists, keyExists)
+			}
 			if got != c.want {
 				t.Fatalf("expected %s, but got %s", c.want, got)
 			}
