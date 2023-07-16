@@ -35,7 +35,8 @@ func (s *server) Run(addr string) error {
 }
 
 type putTableReq struct {
-	File string `json:"file" binding:"required"`
+	File    string `json:"file" binding:"required"`
+	Replace bool   `json:"replace"`
 }
 
 func (s *server) PutTable(c *gin.Context) {
@@ -50,7 +51,14 @@ func (s *server) PutTable(c *gin.Context) {
 		return
 	}
 
-	if err := s.db.PutTable(ctx, tableName, req.File); err != nil {
+	if !req.Replace && s.db.HasTable(tableName) {
+		c.JSON(400, gin.H{
+			"message": fmt.Sprintf("%s table already exists and replace is false", tableName),
+		})
+		return
+	}
+
+	if err := s.db.PutTable(ctx, tableName, req.File, req.Replace); err != nil {
 		c.JSON(500, gin.H{
 			"message": fmt.Sprintf("failed to create table: %s", err),
 		})

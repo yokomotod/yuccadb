@@ -55,9 +55,14 @@ func (db *YuccaDB) loadExistingTables(ctx context.Context) error {
 	return nil
 }
 
-func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string) error {
-	if _, ok := db.tables[tableName]; ok {
-		return fmt.Errorf("table %s already exists", tableName)
+func (db *YuccaDB) HasTable(tableName string) bool {
+	_, ok := db.tables[tableName]
+	return ok
+}
+
+func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string, replace bool) error {
+	if _, ok := db.tables[tableName]; ok && !replace {
+		return fmt.Errorf("table %s already exists and replace is false", tableName)
 	}
 
 	localFile := fmt.Sprintf("%s/%s.tsv", db.dataDir, tableName)
@@ -77,11 +82,6 @@ func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string) error {
 	}
 
 	if tmpFile != localFile {
-		if _, err := os.Stat(localFile); err == nil {
-			return fmt.Errorf("file already exists: %s", localFile)
-		} else if !os.IsNotExist(err) {
-			return err
-		}
 		err = os.Rename(tmpFile, localFile)
 		if err != nil {
 			return fmt.Errorf("failed to rename file: %s", err)

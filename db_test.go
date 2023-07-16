@@ -79,7 +79,7 @@ func TestDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.PutTable(ctx, testTableName, testFile); err != nil {
+	if err := db.PutTable(ctx, testTableName, testFile, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -144,7 +144,7 @@ func TestLoadError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.PutTable(ctx, "broken", brokenFile)
+	err = db.PutTable(ctx, "broken", brokenFile, false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -173,8 +173,7 @@ func TestDuplicateTableError(t *testing.T) {
 	tempDir := t.TempDir()
 	tempDataDir := t.TempDir()
 
-	lines := []string{"key\tvalue"}
-	content := strings.Join(lines, "\n")
+	content := "key\tvalue"
 	testFile := filepath.Join(tempDir, "test.tsv")
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -184,16 +183,61 @@ func TestDuplicateTableError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.PutTable(ctx, "test", testFile); err != nil {
+	if err := db.PutTable(ctx, "test", testFile, false); err != nil {
 		t.Fatal(err)
 	}
 
-	err = db.PutTable(ctx, "test", testFile)
+	err = db.PutTable(ctx, "test", testFile, false)
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	expectedErr := "table test already exists"
+	expectedErr := "table test already exists and replace is false"
 	if err.Error() != expectedErr {
 		t.Fatalf("expected error %s, but got %s", expectedErr, err.Error())
 	}
+}
+
+func TestReplaceTable(t *testing.T) {
+	ctx := context.Background()
+	tableName := "test"
+	tempDir := t.TempDir()
+	tempDataDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "test.tsv")
+
+	db, err := yuccadb.NewYuccaDB(ctx, tempDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := "key\tvalue"
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.PutTable(ctx, tableName, testFile, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _, err := db.GetValue(tableName, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "value" {
+		t.Fatalf("expected value, but got %s", got)
+	}
+
+	// replace
+	content = "key\tvalue2"
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.PutTable(ctx, tableName, testFile, true); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _, err = db.GetValue(tableName, "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "value2" {
+		t.Fatalf("expected value, but got %s", got)
+	}
+
 }
