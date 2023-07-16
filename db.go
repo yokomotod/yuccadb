@@ -12,14 +12,14 @@ type YuccaDB struct {
 	tables  map[string]*sstable.SSTable
 }
 
-func NewYuccaDB() *YuccaDB {
+func NewYuccaDB(dataDir string) *YuccaDB {
 	return &YuccaDB{
-		dataDir: "./data",
+		dataDir: dataDir,
 		tables:  make(map[string]*sstable.SSTable),
 	}
 }
 
-func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string) error {
+func (db *YuccaDB) CreateTable(ctx context.Context, tableName, file string) error {
 	table, err := sstable.NewSSTable(ctx, tableName, file, db.dataDir)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %s", err)

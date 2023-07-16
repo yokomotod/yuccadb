@@ -1,4 +1,4 @@
-package sstable_test
+package yuccadb_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yokomotod/yuccadb/sstable"
+	"github.com/yokomotod/yuccadb"
 )
 
 func TestMain(m *testing.M) {
@@ -30,7 +30,7 @@ func testFileName() string {
 	for i := 0; s >= 1_000; s, i = s/1_000, i+1 {
 		unit = units[i]
 	}
-	return fmt.Sprintf("../testfile/test%d%s.tsv", s, unit)
+	return fmt.Sprintf("./testfile/test%d%s.tsv", s, unit)
 
 }
 
@@ -61,12 +61,12 @@ func genTestTsv(testFile string) error {
 	return nil
 }
 
-func TestSSTable(t *testing.T) {
+func TestDB(t *testing.T) {
 	ctx := context.Background()
-	dataDir, testTableName, testFile := "../testdata", "test", testFileName()
+	dataDir, testTableName, testFile := "./testdata", "test", testFileName()
 
-	ssTable, err := sstable.NewSSTable(ctx, testTableName, testFile, dataDir)
-	if err != nil {
+	db := yuccadb.NewYuccaDB(dataDir)
+	if err := db.CreateTable(ctx, testTableName, testFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,9 +85,12 @@ func TestSSTable(t *testing.T) {
 		// sub test
 		t.Run(c.name, func(t *testing.T) {
 
-			got, keyExists, err := ssTable.Get(c.key)
+			got, tableExists, keyExists, err := db.GetValue(testTableName, c.key)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if !tableExists {
+				t.Fatalf("table %s does not exist", testTableName)
 			}
 
 			if keyExists != c.wantKeyExists {
