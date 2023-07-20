@@ -25,11 +25,17 @@ func NewServer(ctx context.Context, dataDir string) (*server, error) {
 	}, nil
 }
 
-func (s *server) Run(addr string) error {
+func (s *server) setupRouter() *gin.Engine {
 	r := gin.Default()
 
-	r.PUT("/:table", s.PutTable)
-	r.GET("/:table/:key", s.GetValue)
+	r.PUT("/tables/:table", s.PutTable)
+	r.GET("/tables/:table/:key", s.GetValue)
+
+	return r
+}
+
+func (s *server) Run(addr string) error {
+	r := s.setupRouter()
 
 	return r.Run(addr)
 }
