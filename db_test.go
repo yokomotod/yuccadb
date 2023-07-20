@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -52,7 +53,7 @@ func genTestCsv(testFile string) error {
 
 	for i := 0; i < size; i++ {
 		key := fmt.Sprintf("%010d", i)
-		value := fmt.Sprint(i)
+		value := strconv.Itoa(i)
 
 		_, err := f.WriteString(key + "," + value + "\n")
 		if err != nil {
@@ -97,6 +98,8 @@ func TestDB(t *testing.T) {
 	}{
 		{"key exists on index", db, "0000000000", "0", true},
 		{"key does not exist on index", db, "0000099999", "99999", true},
+		{"last key", db, fmt.Sprintf("%010d", size-1), strconv.Itoa(size - 1), true},
+		{"before last key", db, fmt.Sprintf("%010d", size-2), strconv.Itoa(size - 2), true},
 		{"not found but middle of keys", db, "0000099999x", "", false},
 		{"key exists on reloaded index", db2, "0000000000", "0", true},
 	}

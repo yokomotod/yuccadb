@@ -43,7 +43,8 @@ func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
 
 	scanner := bufio.NewScanner(f)
 
-	count, offset := 0, 0
+	var count, offset, lastOffset int
+	var lastKey string
 	index := make([]indexEntry, 0)
 
 	for scanner.Scan() {
@@ -61,12 +62,20 @@ func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
 			index = append(index, indexEntry{key, int64(offset)})
 		}
 
+		lastOffset = offset
 		offset += len(line) + 1
 		count++
+		lastKey = key
+
 	}
 
 	if scanner.Err() != nil {
 		return fmt.Errorf("failed to scan file: %s", err)
+	}
+
+	// add last key
+	if index[len(index)-1].key != lastKey {
+		index = append(index, indexEntry{lastKey, int64(lastOffset)})
 	}
 
 	t.File = csvFile
@@ -104,7 +113,7 @@ func (t *SSTable) Get(key string) (result, error) {
 		return result{"", false, p}, nil
 	}
 
-	// fmt.Printf("Found offset: %v for %v\n", t.index[i].offset, t.index[i].key)
+	// fmt.Printf("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
 
 	// open file and seek to offset
 	f, err := os.Open(t.File)
@@ -127,7 +136,6 @@ func (t *SSTable) Get(key string) (result, error) {
 	t1 = t2
 
 	var scannedLines, scannedBytes int
-	var value string
 
 	// read line
 	scanner := bufio.NewScanner(f)
@@ -143,8 +151,10 @@ func (t *SSTable) Get(key string) (result, error) {
 		}
 
 		if cols[0] == key {
-			value = cols[1]
-			break
+			t2 = time.Now()
+			p.Scan = t2.Sub(t1)
+
+			return result{cols[1], true, p}, nil
 		}
 
 		scannedLines++
@@ -165,11 +175,8 @@ func (t *SSTable) Get(key string) (result, error) {
 		return result{"", false, p}, fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	t2 = time.Now()
-	p.Scan = t2.Sub(t1)
-	t1 = t2
-
-	return result{value, true, p}, nil
+	// should never happen
+	return result{"", false, p}, fmt.Errorf("should never reach here")
 }
 
 func (t *SSTable) searchOffset(key string) (offset, limit int64) {
