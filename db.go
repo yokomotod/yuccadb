@@ -173,19 +173,28 @@ func copy(localFile, srcPath string) error {
 	return nil
 }
 
-func (db *YuccaDB) GetValue(tableName, key string) (value string, tableExists, keyExists bool, err error) {
+type result struct {
+	Value       string
+	TableExists bool
+	KeyExists   bool
+	Profile     sstable.Profile
+}
+
+func (db *YuccaDB) GetValue(tableName, key string) (result, error) {
 	ssTable, tableExists := db.tables[tableName]
 	if !tableExists {
-		return "", false, false, nil
+		return result{}, nil
 	}
 
-	value, keyExists, err = ssTable.Get(key)
+	res, err := ssTable.Get(key)
 	if err != nil {
-		return "", true, false, fmt.Errorf("failed to get value: %s", err)
-	}
-	if !keyExists {
-		return "", true, false, nil
+		return result{}, fmt.Errorf("failed to get value: %s", err)
 	}
 
-	return value, true, true, nil
+	return result{
+		Value:       res.Value,
+		TableExists: true,
+		KeyExists:   res.KeyExists,
+		Profile:     res.Profile,
+	}, nil
 }

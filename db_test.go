@@ -105,19 +105,19 @@ func TestDB(t *testing.T) {
 		// sub test
 		t.Run(c.name, func(t *testing.T) {
 
-			got, tableExists, keyExists, err := c.db.GetValue(testTableName, c.key)
+			res, err := c.db.GetValue(testTableName, c.key)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !tableExists {
+			if !res.TableExists {
 				t.Fatalf("table %s does not exist", testTableName)
 			}
 
-			if keyExists != c.wantKeyExists {
-				t.Fatalf("expected keyExists %t, but got %t", c.wantKeyExists, keyExists)
+			if res.KeyExists != c.wantKeyExists {
+				t.Fatalf("expected keyExists %t, but got %t", c.wantKeyExists, res.KeyExists)
 			}
-			if got != c.want {
-				t.Fatalf("expected %s, but got %s", c.want, got)
+			if res.Value != c.want {
+				t.Fatalf("expected %s, but got %s", c.want, res.Value)
 			}
 		})
 	}
@@ -216,12 +216,12 @@ func TestReplaceTable(t *testing.T) {
 	if err := db.PutTable(ctx, tableName, testFile, false); err != nil {
 		t.Fatal(err)
 	}
-	got, _, _, err := db.GetValue(tableName, "key")
+	res, err := db.GetValue(tableName, "key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "value" {
-		t.Fatalf("expected value, but got %s", got)
+	if res.Value != "value" {
+		t.Fatalf("expected value, but got %s", res.Value)
 	}
 
 	// replace
@@ -232,12 +232,12 @@ func TestReplaceTable(t *testing.T) {
 	if err := db.PutTable(ctx, tableName, testFile, true); err != nil {
 		t.Fatal(err)
 	}
-	got, _, _, err = db.GetValue(tableName, "key")
+	res, err = db.GetValue(tableName, "key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "value2" {
-		t.Fatalf("expected value, but got %s", got)
+	if res.Value != "value2" {
+		t.Fatalf("expected value, but got %s", res.Value)
 	}
 
 }

@@ -72,14 +72,7 @@ func (s *server) PutTable(c *gin.Context) {
 
 func (s *server) GetValue(c *gin.Context) {
 	tableName, key := c.Param("table"), c.Param("key")
-	value, tableExists, keyExists, err := s.db.GetValue(tableName, key)
-
-	if !tableExists {
-		c.JSON(404, gin.H{
-			"message": fmt.Sprintf("%s table is not found", tableName),
-		})
-		return
-	}
+	res, err := s.db.GetValue(tableName, key)
 
 	if err != nil {
 		c.JSON(500, gin.H{
@@ -87,7 +80,13 @@ func (s *server) GetValue(c *gin.Context) {
 		})
 		return
 	}
-	if !keyExists {
+	if !res.TableExists {
+		c.JSON(404, gin.H{
+			"message": fmt.Sprintf("%s table is not found", tableName),
+		})
+		return
+	}
+	if !res.KeyExists {
 		c.JSON(200, gin.H{
 			"value": nil,
 		})
@@ -95,6 +94,6 @@ func (s *server) GetValue(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"value": value,
+		"value": res.Value,
 	})
 }
