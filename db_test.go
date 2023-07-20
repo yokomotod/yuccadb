@@ -12,7 +12,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	err := genTestTsv(testFileName())
+	err := genTestCsv(testFileName())
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -32,11 +32,11 @@ func testFileName() string {
 	for i := 0; s >= 1_000; s, i = s/1_000, i+1 {
 		unit = units[i]
 	}
-	return fmt.Sprintf("./testfile/test%d%s.tsv", s, unit)
+	return fmt.Sprintf("./testfile/test%d%s.csv", s, unit)
 
 }
 
-func genTestTsv(testFile string) error {
+func genTestCsv(testFile string) error {
 	// check test file exists and skip generating
 	if _, err := os.Stat(testFile); err == nil {
 		fmt.Printf("Skip generating %s\n", testFile)
@@ -54,7 +54,7 @@ func genTestTsv(testFile string) error {
 		key := fmt.Sprintf("%010d", i)
 		value := fmt.Sprint(i)
 
-		_, err := f.WriteString(key + "\t" + value + "\n")
+		_, err := f.WriteString(key + "," + value + "\n")
 		if err != nil {
 			return fmt.Errorf("failed to write file: %s", err)
 		}
@@ -130,11 +130,11 @@ func TestLoadError(t *testing.T) {
 	tempDataDir := t.TempDir()
 
 	lines := []string{
-		"key\tvalue",
+		"key,value",
 		"broken",
 	}
 	content := strings.Join(lines, "\n")
-	brokenFile := filepath.Join(tempDir, "broken.tsv")
+	brokenFile := filepath.Join(tempDir, "broken.csv")
 
 	if err := os.WriteFile(brokenFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -173,8 +173,8 @@ func TestDuplicateTableError(t *testing.T) {
 	tempDir := t.TempDir()
 	tempDataDir := t.TempDir()
 
-	content := "key\tvalue"
-	testFile := filepath.Join(tempDir, "test.tsv")
+	content := "key,value"
+	testFile := filepath.Join(tempDir, "test.csv")
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -202,14 +202,14 @@ func TestReplaceTable(t *testing.T) {
 	tableName := "test"
 	tempDir := t.TempDir()
 	tempDataDir := t.TempDir()
-	testFile := filepath.Join(tempDir, "test.tsv")
+	testFile := filepath.Join(tempDir, "test.csv")
 
 	db, err := yuccadb.NewYuccaDB(ctx, tempDataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	content := "key\tvalue"
+	content := "key,value"
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestReplaceTable(t *testing.T) {
 	}
 
 	// replace
-	content = "key\tvalue2"
+	content = "key,value2"
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}

@@ -21,12 +21,12 @@ type SSTable struct {
 	indexInterval int
 }
 
-func NewSSTable(ctx context.Context, name, tsvFile string) (*SSTable, error) {
+func NewSSTable(ctx context.Context, name, csvFile string) (*SSTable, error) {
 	t := &SSTable{
 		indexInterval: 1_000,
 	}
 
-	err := t.load(ctx, name, tsvFile)
+	err := t.load(ctx, name, csvFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load table: %s", err)
 	}
@@ -34,10 +34,10 @@ func NewSSTable(ctx context.Context, name, tsvFile string) (*SSTable, error) {
 	return t, nil
 }
 
-func (t *SSTable) load(ctx context.Context, tableName, tsvFile string) error {
-	f, err := os.Open(tsvFile)
+func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
+	f, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s, %s", tsvFile, err)
+		return fmt.Errorf("failed to open file: %s, %s", csvFile, err)
 	}
 	defer f.Close()
 
@@ -48,7 +48,7 @@ func (t *SSTable) load(ctx context.Context, tableName, tsvFile string) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		cols := strings.Split(line, "\t")
+		cols := strings.Split(line, ",")
 
 		if len(cols) != 2 {
 			return fmt.Errorf("invalid line: %s", line)
@@ -69,10 +69,10 @@ func (t *SSTable) load(ctx context.Context, tableName, tsvFile string) error {
 		return fmt.Errorf("failed to scan file: %s", err)
 	}
 
-	t.File = tsvFile
+	t.File = csvFile
 	t.index = index
 
-	fmt.Printf("Loaded %s, %d items\n", tsvFile, count)
+	fmt.Printf("Loaded %s, %d items\n", csvFile, count)
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (t *SSTable) Get(key string) (result, error) {
 		// fmt.Printf("Read: %s\n", line)
 
 		// split line and return value
-		cols := strings.Split(line, "\t")
+		cols := strings.Split(line, ",")
 		if len(cols) != 2 {
 			return result{"", false, p}, fmt.Errorf("invalid line: %s", line)
 		}

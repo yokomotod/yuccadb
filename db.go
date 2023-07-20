@@ -74,7 +74,7 @@ func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string, replace
 		return fmt.Errorf("table %s already exists and replace is false", tableName)
 	}
 
-	localFile := fmt.Sprintf("%s/%s.tsv", db.dataDir, tableName)
+	localFile := fmt.Sprintf("%s/%s.csv", db.dataDir, tableName)
 	tmpFile := fmt.Sprintf("%s.tmp", localFile)
 	if localFile == file {
 		tmpFile = localFile

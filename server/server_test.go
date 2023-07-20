@@ -17,8 +17,8 @@ func TestServerRequest(t *testing.T) {
 	tempDir := t.TempDir()
 	tempDataDir := t.TempDir()
 
-	content := "key\tvalue"
-	testFile := filepath.Join(tempDir, "test.tsv")
+	content := "key,value"
+	testFile := filepath.Join(tempDir, "test.csv")
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
