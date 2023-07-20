@@ -28,6 +28,7 @@ func NewServer(ctx context.Context, dataDir string) (*server, error) {
 func (s *server) setupRouter() *gin.Engine {
 	r := gin.Default()
 
+	r.GET("/tables", s.GetTables)
 	r.PUT("/tables/:table", s.PutTable)
 	r.GET("/tables/:table/:key", s.GetValue)
 
@@ -43,6 +44,12 @@ func (s *server) Run(addr string) error {
 type putTableReq struct {
 	File    string `json:"file" binding:"required"`
 	Replace bool   `json:"replace"`
+}
+
+func (s *server) GetTables(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"tables": s.db.Tables(),
+	})
 }
 
 func (s *server) PutTable(c *gin.Context) {

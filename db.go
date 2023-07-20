@@ -60,6 +60,15 @@ func (db *YuccaDB) HasTable(tableName string) bool {
 	return ok
 }
 
+func (db *YuccaDB) Tables() []string {
+	tables := make([]string, 0, len(db.tables))
+	for table := range db.tables {
+		tables = append(tables, table)
+	}
+
+	return tables
+}
+
 func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string, replace bool) error {
 	if _, ok := db.tables[tableName]; ok && !replace {
 		return fmt.Errorf("table %s already exists and replace is false", tableName)
