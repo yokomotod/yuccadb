@@ -83,7 +83,7 @@ func BenchmarkDBParallel(b *testing.B) {
 	if err := os.RemoveAll(dataDir); err != nil {
 		b.Fatal(err)
 	}
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		b.Fatal(err)
 	}
 

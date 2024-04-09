@@ -66,7 +66,6 @@ func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
 		offset += len(line) + 1
 		count++
 		lastKey = key
-
 	}
 
 	if scanner.Err() != nil {

@@ -34,7 +34,6 @@ func testFileName() string {
 		unit = units[i]
 	}
 	return fmt.Sprintf("./testfile/test%d%s.csv", s, unit)
-
 }
 
 func genTestCsv(testFile string) error {
@@ -46,7 +45,7 @@ func genTestCsv(testFile string) error {
 
 	fmt.Printf("Generating %s...\n", testFile)
 
-	f, err := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE, 0644)
+	f, err := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %s", err)
 	}
@@ -72,7 +71,7 @@ func TestDB(t *testing.T) {
 	if err := os.RemoveAll(dataDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +106,6 @@ func TestDB(t *testing.T) {
 	for _, c := range cases {
 		// sub test
 		t.Run(c.name, func(t *testing.T) {
-
 			res, err := c.db.GetValue(testTableName, c.key)
 			if err != nil {
 				t.Fatal(err)
@@ -139,7 +137,7 @@ func TestLoadError(t *testing.T) {
 	content := strings.Join(lines, "\n")
 	brokenFile := filepath.Join(tempDir, "broken.csv")
 
-	if err := os.WriteFile(brokenFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(brokenFile, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -178,7 +176,7 @@ func TestDuplicateTableError(t *testing.T) {
 
 	content := "key,value"
 	testFile := filepath.Join(tempDir, "test.csv")
-	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -213,7 +211,7 @@ func TestReplaceTable(t *testing.T) {
 	}
 
 	content := "key,value"
-	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.PutTable(ctx, tableName, testFile, false); err != nil {
@@ -229,7 +227,7 @@ func TestReplaceTable(t *testing.T) {
 
 	// replace
 	content = "key,value2"
-	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.PutTable(ctx, tableName, testFile, true); err != nil {
@@ -242,5 +240,4 @@ func TestReplaceTable(t *testing.T) {
 	if res.Value != "value2" {
 		t.Fatalf("expected value, but got %s", res.Value)
 	}
-
 }

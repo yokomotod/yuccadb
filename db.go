@@ -22,7 +22,7 @@ func NewYuccaDB(ctx context.Context, dataDir string) (*YuccaDB, error) {
 		tables:  make(map[string]*sstable.SSTable),
 	}
 
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %s", err)
 	}
 
@@ -128,7 +128,7 @@ func download(ctx context.Context, localFile, gcsPath string) error {
 	defer client.Close()
 
 	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
-	f, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+	f, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
 		return fmt.Errorf("os.Create: %w", err)
 	}
@@ -166,7 +166,7 @@ func copy(localFile, srcPath string) error {
 	defer src.Close()
 
 	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
-	dst, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+	dst, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %s", err)
 	}

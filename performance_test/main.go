@@ -20,19 +20,25 @@ import (
 // This is a tool like Apache Benchmark a.k.a "ab".
 // It doesn't implement all the features supported by ab.
 
-var client *http.Client
-var postBody []byte
+var (
+	client   *http.Client
+	postBody []byte
+)
 
 var verbose bool
 
-var method string
-var url string
-var timeout int
-var postFile string
-var contentType string
+var (
+	method      string
+	url         string
+	timeout     int
+	postFile    string
+	contentType string
+)
 
-var disableCompression bool
-var disableKeepalive bool
+var (
+	disableCompression bool
+	disableKeepalive   bool
+)
 
 const size = 100_000_000
 
@@ -67,7 +73,6 @@ func worker() {
 				log.Printf("Status Code: %d\n", response.StatusCode)
 				log.Println(string(body))
 			}
-
 		} else {
 			io.Copy(ioutil.Discard, response.Body)
 		}
