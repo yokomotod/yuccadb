@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 
@@ -11,42 +12,48 @@ import (
 	"github.com/yokomotod/yuccadb/sstable"
 )
 
+const (
+	dataDirPermision  = 0o755
+	dataFilePermision = 0o644
+)
+
 type YuccaDB struct {
 	dataDir string
 	tables  map[string]*sstable.SSTable
 }
 
-func NewYuccaDB(ctx context.Context, dataDir string) (*YuccaDB, error) {
+func NewYuccaDB(dataDir string) (*YuccaDB, error) {
 	db := &YuccaDB{
 		dataDir: dataDir,
 		tables:  make(map[string]*sstable.SSTable),
 	}
 
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %s", err)
+	if err := os.MkdirAll(dataDir, dataDirPermision); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	if err := db.loadExistingTables(ctx); err != nil {
-		return nil, fmt.Errorf("failed to load existing tables: %s", err)
+	if err := db.loadExistingTables(); err != nil {
+		return nil, fmt.Errorf("failed to load existing tables: %w", err)
 	}
 
 	return db, nil
 }
 
-func (db *YuccaDB) loadExistingTables(ctx context.Context) error {
+func (db *YuccaDB) loadExistingTables() error {
 	files, err := os.ReadDir(db.dataDir)
 	if err != nil {
-		return fmt.Errorf("failed to read data directory: %s", err)
+		return fmt.Errorf("failed to read data directory: %w", err)
 	}
 
 	for _, file := range files {
 		tableName := strings.Split(file.Name(), ".")[0]
 		filePath := fmt.Sprintf("%s/%s", db.dataDir, file.Name())
 
-		fmt.Printf("loading table %s from %s\n", tableName, filePath)
-		table, err := sstable.NewSSTable(ctx, tableName, filePath)
+		log.Printf("loading table %s from %s\n", tableName, filePath)
+
+		table, err := sstable.NewSSTable(filePath)
 		if err != nil {
-			return fmt.Errorf("failed to load table: %s", err)
+			return fmt.Errorf("failed to load table: %w", err)
 		}
 
 		db.tables[tableName] = table
@@ -57,6 +64,7 @@ func (db *YuccaDB) loadExistingTables(ctx context.Context) error {
 
 func (db *YuccaDB) HasTable(tableName string) bool {
 	_, ok := db.tables[tableName]
+
 	return ok
 }
 
@@ -74,26 +82,31 @@ func (db *YuccaDB) PutTable(ctx context.Context, tableName, file string, replace
 		return fmt.Errorf("table %s already exists and replace is false", tableName)
 	}
 
-	localFile := fmt.Sprintf("%s/%s.csv", db.dataDir, tableName)
-	tmpFile := fmt.Sprintf("%s.tmp", localFile)
+	localFile := db.dataDir + "/" + tableName + ".csv"
+	tmpFile := localFile + ".tmp"
+
 	if localFile == file {
 		tmpFile = localFile
 	} else {
-		prepareFile(ctx, file, tmpFile)
+		err := prepareFile(ctx, file, tmpFile)
+		if err != nil {
+			return fmt.Errorf("failed to prepare file: %w", err)
+		}
 	}
 
-	table, err := sstable.NewSSTable(ctx, tableName, tmpFile)
+	table, err := sstable.NewSSTable(tmpFile)
 	if err != nil {
 		if tmpFile != localFile {
 			_ = os.Remove(tmpFile)
 		}
-		return fmt.Errorf("failed to create table: %s", err)
+
+		return fmt.Errorf("failed to create table: %w", err)
 	}
 
 	if tmpFile != localFile {
 		err = os.Rename(tmpFile, localFile)
 		if err != nil {
-			return fmt.Errorf("failed to rename file: %s", err)
+			return fmt.Errorf("failed to rename file: %w", err)
 		}
 
 		table.File = localFile
@@ -108,12 +121,12 @@ func prepareFile(ctx context.Context, srcFile, tmpFile string) error {
 	if strings.HasPrefix(srcFile, "gs://") {
 		err := download(ctx, tmpFile, srcFile)
 		if err != nil {
-			return fmt.Errorf("failed to download file: %s", err)
+			return fmt.Errorf("failed to download file: %w", err)
 		}
 	} else {
-		err := copy(tmpFile, srcFile)
+		err := cp(tmpFile, srcFile)
 		if err != nil {
-			return fmt.Errorf("failed to copy file: %s", err)
+			return fmt.Errorf("failed to copy file: %w", err)
 		}
 	}
 
@@ -128,79 +141,83 @@ func download(ctx context.Context, localFile, gcsPath string) error {
 	defer client.Close()
 
 	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
-	f, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+	file, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, dataFilePermision)
 	if err != nil {
 		return fmt.Errorf("os.Create: %w", err)
 	}
-	defer f.Close()
+	defer file.Close()
 
 	pathSegments := strings.Split(gcsPath, "/")
 	bucket := pathSegments[2]
 	object := strings.Join(pathSegments[3:], "/")
 
-	rc, err := client.Bucket(bucket).Object(object).NewReader(ctx)
+	reader, err := client.Bucket(bucket).Object(object).NewReader(ctx)
 	if err != nil {
 		return fmt.Errorf("Object(%q).NewReader: %w", object, err)
 	}
-	defer rc.Close()
+	defer reader.Close()
 
-	fmt.Printf("Downloading %v from %v\n", object, bucket)
-	if _, err := io.Copy(f, rc); err != nil {
+	log.Printf("Downloading %v from %v\n", object, bucket)
+
+	if _, err := io.Copy(file, reader); err != nil {
 		return fmt.Errorf("io.Copy: %w", err)
 	}
-	fmt.Printf("Downloaded %v\n", object)
+
+	log.Printf("Downloaded %v\n", object)
 
 	return nil
 }
 
-func copy(localFile, srcPath string) error {
+func cp(localFile, srcPath string) error {
 	if localFile == srcPath {
-		fmt.Printf("Skip copying %v\n", srcPath)
+		log.Printf("Skip copying %v\n", srcPath)
+
 		return nil
 	}
 
 	src, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s", err)
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer src.Close()
 
 	// use OpenFile with os.O_EXCL instead of Create to avoid overwriting
-	dst, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+	dst, err := os.OpenFile(localFile, os.O_RDWR|os.O_CREATE|os.O_EXCL, dataFilePermision)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %s", err)
+		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer dst.Close()
 
-	fmt.Printf("Copying %v to %v\n", srcPath, localFile)
+	log.Printf("Copying %v to %v\n", srcPath, localFile)
+
 	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("failed to copy file: %s", err)
+		return fmt.Errorf("failed to copy file: %w", err)
 	}
 
-	fmt.Printf("Copied %v\n", srcPath)
+	log.Printf("Copied %v\n", srcPath)
 
 	return nil
 }
 
-type result struct {
+type Result struct {
 	Value       string
 	TableExists bool
 	KeyExists   bool
 	Profile     sstable.Profile
 }
 
-func (db *YuccaDB) GetValue(tableName, key string) (result, error) {
+func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 	ssTable, tableExists := db.tables[tableName]
 	if !tableExists {
-		return result{}, nil
+		return Result{}, nil
 	}
 
 	res, err := ssTable.Get(key)
 	if err != nil {
-		return result{}, fmt.Errorf("failed to get value: %s", err)
+		return Result{}, fmt.Errorf("failed to get value: %w", err)
 	}
 
-	return result{
+	return Result{
 		Value:       res.Value,
 		TableExists: true,
 		KeyExists:   res.KeyExists,

@@ -2,12 +2,18 @@ package sstable
 
 import (
 	"bufio"
-	"context"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
 	"time"
+)
+
+const (
+	defaultIndexInterval = 1_000
+	expectedCols         = 2
 )
 
 type indexEntry struct {
@@ -21,44 +27,46 @@ type SSTable struct {
 	indexInterval int
 }
 
-func NewSSTable(ctx context.Context, name, csvFile string) (*SSTable, error) {
-	t := &SSTable{
-		indexInterval: 1_000,
+func NewSSTable(csvFile string) (*SSTable, error) {
+	table := &SSTable{
+		indexInterval: defaultIndexInterval,
 	}
 
-	err := t.load(ctx, name, csvFile)
+	err := table.load(csvFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load table: %s", err)
+		return nil, fmt.Errorf("failed to load table: %w", err)
 	}
 
-	return t, nil
+	return table, nil
 }
 
-func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
-	f, err := os.Open(csvFile)
+func (t *SSTable) load(csvFile string) error {
+	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s, %s", csvFile, err)
+		return fmt.Errorf("failed to open file: %s, %w", csvFile, err)
 	}
-	defer f.Close()
+	defer file.Close()
 
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(file)
 
 	var count, offset, lastOffset int
+
 	var lastKey string
+
 	index := make([]indexEntry, 0)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		cols := strings.Split(line, ",")
 
-		if len(cols) != 2 {
+		if len(cols) != expectedCols {
 			return fmt.Errorf("invalid line: %s", line)
 		}
 
 		key := cols[0]
 
 		if count%t.indexInterval == 0 {
-			// fmt.Printf("Offset: %d Line: %s\n", offset, line)
+			// log.Printf("Offset: %d Line: %s\n", offset, line)
 			index = append(index, indexEntry{key, int64(offset)})
 		}
 
@@ -69,7 +77,7 @@ func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
 	}
 
 	if scanner.Err() != nil {
-		return fmt.Errorf("failed to scan file: %s", err)
+		return fmt.Errorf("failed to scan file: %w", err)
 	}
 
 	// add last key
@@ -80,7 +88,8 @@ func (t *SSTable) load(ctx context.Context, tableName, csvFile string) error {
 	t.File = csvFile
 	t.index = index
 
-	fmt.Printf("Loaded %s, %d items\n", csvFile, count)
+	log.Printf("Loaded %s, %d items\n", csvFile, count)
+
 	return nil
 }
 
@@ -91,69 +100,92 @@ type Profile struct {
 	Scan         time.Duration
 }
 
-type result struct {
+type Result struct {
 	Value     string
 	KeyExists bool
 	Profile   Profile
 }
 
-func (t *SSTable) Get(key string) (result, error) {
-	p := Profile{}
-	t1 := time.Now()
+func (t *SSTable) Get(key string) (Result, error) {
+	profile := Profile{}
+	time1 := time.Now()
 
 	offset, limit := t.searchOffset(key)
 
-	t2 := time.Now()
-	p.SearchOffset = t2.Sub(t1)
-	t1 = t2
+	time2 := time.Now()
+	profile.SearchOffset = time2.Sub(time1)
+	time1 = time2
 
 	if offset == -1 {
-		// fmt.Printf("Not found offset: %v\n", key)
-		return result{"", false, p}, nil
+		// log.Printf("Not found offset: %v\n", key)
+		return Result{"", false, profile}, nil
 	}
 
-	// fmt.Printf("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
+	// log.Printf("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
 
-	// open file and seek to offset
-	f, err := os.Open(t.File)
+	file, err := os.Open(t.File)
 	if err != nil {
-		return result{"", false, p}, fmt.Errorf("failed to open file: %s", err)
+		return Result{"", false, profile}, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer f.Close()
+	defer file.Close()
 
-	t2 = time.Now()
-	p.Open = t2.Sub(t1)
-	t1 = t2
+	time2 = time.Now()
+	profile.Open = time2.Sub(time1)
+	time1 = time2
 
-	_, err = f.Seek(offset, 0)
+	_, err = file.Seek(offset, 0)
 	if err != nil {
-		return result{"", false, p}, fmt.Errorf("failed to seek file: %s", err)
+		return Result{"", false, profile}, fmt.Errorf("failed to seek file: %w", err)
 	}
 
-	t2 = time.Now()
-	p.Seek = t2.Sub(t1)
-	t1 = t2
+	time2 = time.Now()
+	profile.Seek = time2.Sub(time1)
+	time1 = time2
 
+	value, keyExists, err := t.scan(file, key, offset, limit)
+	if err != nil {
+		return Result{"", false, profile}, fmt.Errorf("failed to scan file: %w", err)
+	}
+
+	time2 = time.Now()
+	profile.Scan = time2.Sub(time1)
+
+	return Result{value, keyExists, profile}, nil
+}
+
+func (t *SSTable) searchOffset(key string) (offset, limit int64) {
+	idx := sort.Search(len(t.index), func(i int) bool {
+		return t.index[i].key >= key
+	})
+
+	if idx >= len(t.index) {
+		return -1, -1
+	}
+
+	if t.index[idx].key == key {
+		return t.index[idx].offset, t.index[idx].offset
+	}
+
+	return t.index[idx-1].offset, t.index[idx].offset
+}
+
+func (t *SSTable) scan(f *os.File, key string, offset, limit int64) (string, bool, error) {
 	var scannedLines, scannedBytes int
 
-	// read line
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// fmt.Printf("Read: %s\n", line)
+		// log.Printf("Read: %s\n", line)
 
 		// split line and return value
 		cols := strings.Split(line, ",")
-		if len(cols) != 2 {
-			return result{"", false, p}, fmt.Errorf("invalid line: %s", line)
+		if len(cols) != expectedCols {
+			return "", false, fmt.Errorf("invalid line: %s", line)
 		}
 
 		if cols[0] == key {
-			t2 = time.Now()
-			p.Scan = t2.Sub(t1)
-
-			return result{cols[1], true, p}, nil
+			return cols[1], true, nil
 		}
 
 		scannedLines++
@@ -161,35 +193,19 @@ func (t *SSTable) Get(key string) (result, error) {
 
 		if offset+int64(scannedBytes) >= limit {
 			// reached to next index, means not found
-			return result{"", false, p}, nil
+			return "", false, nil
 		}
 
 		if scannedLines > t.indexInterval {
 			// should never happen
-			return result{"", false, p}, fmt.Errorf("too many scanned lines: %d", scannedLines)
+			return "", false, fmt.Errorf("too many scanned lines: %d", scannedLines)
 		}
 	}
 
-	if scanner.Err() != nil {
-		return result{"", false, p}, fmt.Errorf("failed to scan file: %s", err)
+	if err := scanner.Err(); err != nil {
+		return "", false, fmt.Errorf("failed to scan file: %w", err)
 	}
 
 	// should never happen
-	return result{"", false, p}, fmt.Errorf("should never reach here")
-}
-
-func (t *SSTable) searchOffset(key string) (offset, limit int64) {
-	i := sort.Search(len(t.index), func(i int) bool {
-		return t.index[i].key >= key
-	})
-
-	if i >= len(t.index) {
-		return -1, -1
-	}
-
-	if t.index[i].key == key {
-		return t.index[i].offset, t.index[i].offset
-	}
-
-	return t.index[i-1].offset, t.index[i].offset
+	return "", false, errors.New("should never reach here")
 }

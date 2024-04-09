@@ -1,14 +1,31 @@
+linters-settings:
+  cyclop:
+    # The maximal code complexity to report.
+    # Default: 10
+    max-complexity: 12
+  varnamelen:
+    # Optional list of variable names that should be ignored completely.
+    # Default: []
+    ignore-names:
+      - db
+
 linters:
   enable-all: true
   disable:
     # deprecated
-    - ifshort # is deprecated (since v1.48.0) due to: The repository of the linter has been deprecated by the owner.
-    - nosnakecase # is deprecated (since v1.48.1) due to: The repository of the linter has been deprecated by the owner. Replaced by revive(var-naming).
-    - maligned # is deprecated (since v1.38.0) due to: The repository of the linter has been archived by the owner. Replaced by govet 'fieldalignment'.
-    - varcheck # is deprecated (since v1.49.0) due to: The owner seems to have abandoned the linter. Replaced by unused.
     - deadcode # is deprecated (since v1.49.0) due to: The owner seems to have abandoned the linter. Replaced by unused.
-    - golint # is deprecated (since v1.41.0) due to: The repository of the linter has been archived by the owner. Replaced by revive.
-    - structcheck # is deprecated (since v1.49.0) due to: The owner seems to have abandoned the linter. Replaced by unused.
-    - interfacer # is deprecated (since v1.38.0) due to: The repository of the linter has been archived by the owner.
-    - scopelint # is deprecated (since v1.39.0) due to: The repository of the linter has been deprecated by the owner. Replaced by exportloopref.
     - exhaustivestruct # is deprecated (since v1.46.0) due to: The owner seems to have abandoned the linter. Replaced by exhaustruct.
+    - golint # is deprecated (since v1.41.0) due to: The repository of the linter has been archived by the owner. Replaced by revive.
+    - ifshort # is deprecated (since v1.48.0) due to: The repository of the linter has been deprecated by the owner.
+    - interfacer # is deprecated (since v1.38.0) due to: The repository of the linter has been archived by the owner.
+    - maligned # is deprecated (since v1.38.0) due to: The repository of the linter has been archived by the owner. Replaced by govet 'fieldalignment'.
+    - nosnakecase # is deprecated (since v1.48.1) due to: The repository of the linter has been deprecated by the owner. Replaced by revive(var-naming).
+    - scopelint # is deprecated (since v1.39.0) due to: The repository of the linter has been deprecated by the owner. Replaced by exportloopref.
+    - structcheck # is deprecated (since v1.49.0) due to: The owner seems to have abandoned the linter. Replaced by unused.
+    - varcheck # is deprecated (since v1.49.0) due to: The owner seems to have abandoned the linter. Replaced by unused.
+
+    # not useful
+    - depguard
+    - exhaustruct
+    - goerr113
+    - nonamedreturns

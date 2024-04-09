@@ -3,6 +3,7 @@ package yuccadb_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -26,10 +27,6 @@ import (
 // BenchmarkDBParallel-8   	   70704	     20128 ns/op
 
 func BenchmarkDB(b *testing.B) {
-	ctx := context.Background()
-	// dataDir, testTableName, testFile := "./testdata", "test", testFileName()
-	dataDir, testTableName, _ := "./testdata", "test", testFileName()
-
 	// // (re-)create data dir
 	// if err := os.RemoveAll(dataDir); err != nil {
 	// 	b.Fatal(err)
@@ -37,8 +34,7 @@ func BenchmarkDB(b *testing.B) {
 	// if err := os.MkdirAll(dataDir, 0755); err != nil {
 	// 	b.Fatal(err)
 	// }
-
-	db, err := yuccadb.NewYuccaDB(ctx, dataDir)
+	db, err := yuccadb.NewYuccaDB(dataDir)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -47,16 +43,19 @@ func BenchmarkDB(b *testing.B) {
 	// }
 
 	b.ResetTimer()
+
 	total := sstable.Profile{}
 
-	t1 := time.Now()
-	for i := 0; i < b.N; i++ {
-		key := fmt.Sprintf("%010d", i)
+	startTime := time.Now()
+
+	for keySeed := 0; keySeed < b.N; keySeed++ {
+		key := fmt.Sprintf("%010d", keySeed)
 
 		res, err := db.GetValue(testTableName, key)
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		if !res.TableExists {
 			b.Fatalf("table %s does not exist", testTableName)
 		}
@@ -70,27 +69,29 @@ func BenchmarkDB(b *testing.B) {
 		total.Seek += res.Profile.Seek
 		total.Scan += res.Profile.Scan
 
-		i++
+		keySeed++
 	}
-	fmt.Printf("N: %d, time: %v, total: %+v\n", b.N, time.Since(t1), total)
+	log.Printf("N: %d, time: %v, total: %+v\n", b.N, time.Since(startTime), total)
 }
 
 func BenchmarkDBParallel(b *testing.B) {
 	ctx := context.Background()
-	dataDir, testTableName, testFile := "./testdata", "test", testFileName()
+	testFile := testFileName()
 
 	// (re-)create data dir
 	if err := os.RemoveAll(dataDir); err != nil {
 		b.Fatal(err)
 	}
+
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		b.Fatal(err)
 	}
 
-	db, err := yuccadb.NewYuccaDB(ctx, dataDir)
+	db, err := yuccadb.NewYuccaDB(dataDir)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	if err := db.PutTable(ctx, testTableName, testFile, false); err != nil {
 		b.Fatal(err)
 	}
@@ -98,14 +99,15 @@ func BenchmarkDBParallel(b *testing.B) {
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		i := 0
+		keySeed := 0
 		for pb.Next() {
-			key := fmt.Sprintf("%010d", i)
+			key := fmt.Sprintf("%010d", keySeed)
 
 			res, err := db.GetValue(testTableName, key)
 			if err != nil {
 				b.Fatal(err)
 			}
+
 			if !res.TableExists {
 				b.Fatalf("table %s does not exist", testTableName)
 			}
@@ -114,7 +116,7 @@ func BenchmarkDBParallel(b *testing.B) {
 				b.Fatalf("key %s does not exist", key)
 			}
 
-			i++
+			keySeed++
 		}
 	})
 }
