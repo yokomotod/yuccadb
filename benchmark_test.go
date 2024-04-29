@@ -1,10 +1,8 @@
 package yuccadb_test
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"os"
 	"testing"
 	"time"
 
@@ -27,20 +25,13 @@ import (
 // BenchmarkDBParallel-8   	   70704	     20128 ns/op
 
 func BenchmarkDB(b *testing.B) {
-	// // (re-)create data dir
-	// if err := os.RemoveAll(dataDir); err != nil {
-	// 	b.Fatal(err)
-	// }
-	// if err := os.MkdirAll(dataDir, 0755); err != nil {
-	// 	b.Fatal(err)
-	// }
-	db, err := yuccadb.NewYuccaDB(dataDir)
-	if err != nil {
+	testFile := testFileName()
+
+	db := yuccadb.NewYuccaDB()
+
+	if err := db.PutTable(testTableName, testFile, false); err != nil {
 		b.Fatal(err)
 	}
-	// if err := db.PutTable(ctx, testTableName, testFile, false); err != nil {
-	// 	b.Fatal(err)
-	// }
 
 	b.ResetTimer()
 
@@ -71,24 +62,11 @@ func BenchmarkDB(b *testing.B) {
 }
 
 func BenchmarkDBParallel(b *testing.B) {
-	ctx := context.Background()
 	testFile := testFileName()
 
-	// (re-)create data dir
-	if err := os.RemoveAll(dataDir); err != nil {
-		b.Fatal(err)
-	}
+	db := yuccadb.NewYuccaDB()
 
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		b.Fatal(err)
-	}
-
-	db, err := yuccadb.NewYuccaDB(dataDir)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	if err := db.PutTable(ctx, testTableName, testFile, false); err != nil {
+	if err := db.PutTable(testTableName, testFile, false); err != nil {
 		b.Fatal(err)
 	}
 
