@@ -2,6 +2,7 @@ package yuccadb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -200,16 +201,16 @@ func cp(localFile, srcPath string) error {
 }
 
 type Result struct {
-	Values      []string
-	TableExists bool
-	KeyExists   bool
-	Profile     sstable.Profile
+	Values  []string
+	Profile sstable.Profile
 }
+
+var ErrTableNotFound = errors.New("table not found")
 
 func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 	ssTable, tableExists := db.tables[tableName]
 	if !tableExists {
-		return Result{}, nil
+		return Result{}, ErrTableNotFound
 	}
 
 	res, err := ssTable.Get(key)
@@ -218,9 +219,7 @@ func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 	}
 
 	return Result{
-		Values:      res.Values,
-		TableExists: true,
-		KeyExists:   res.KeyExists,
-		Profile:     res.Profile,
+		Values:  res.Values,
+		Profile: res.Profile,
 	}, nil
 }

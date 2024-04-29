@@ -4,6 +4,7 @@ package sstable_test
 import (
 	"bufio"
 	"encoding/csv"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -24,7 +25,6 @@ func BenchmarkScanner(b *testing.B) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		_ = strings.Split(line, ",")
-		// do nothing
 	}
 }
 
@@ -41,10 +41,11 @@ func BenchmarkCSVReader(b *testing.B) {
 
 	for {
 		_, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
 			b.Fatal(err)
 		}
 	}
@@ -64,10 +65,11 @@ func BenchmarkCSVReaderWithReuseRecord(b *testing.B) {
 
 	for {
 		_, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
 			b.Fatal(err)
 		}
 	}

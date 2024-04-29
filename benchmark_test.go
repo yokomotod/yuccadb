@@ -56,11 +56,7 @@ func BenchmarkDB(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		if !res.TableExists {
-			b.Fatalf("table %s does not exist", testTableName)
-		}
-
-		if !res.KeyExists {
+		if res.Values == nil {
 			b.Fatalf("key %s does not exist", key)
 		}
 
@@ -108,11 +104,7 @@ func BenchmarkDBParallel(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			if !res.TableExists {
-				b.Fatalf("table %s does not exist", testTableName)
-			}
-
-			if !res.KeyExists {
+			if res.Values == nil {
 				b.Fatalf("key %s does not exist", key)
 			}
 

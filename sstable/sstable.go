@@ -57,11 +57,13 @@ func (t *SSTable) load(csvFile string) error {
 
 	for {
 		offset := reader.InputOffset()
+
 		cols, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 
@@ -69,7 +71,7 @@ func (t *SSTable) load(csvFile string) error {
 
 		if count%t.indexInterval == 0 {
 			// log.Printf("Offset: %d Line: %s\n", offset, line)
-			index = append(index, indexEntry{key, int64(offset)})
+			index = append(index, indexEntry{key, offset})
 		}
 
 		lastOffset = offset
@@ -79,7 +81,7 @@ func (t *SSTable) load(csvFile string) error {
 
 	// add last key
 	if index[len(index)-1].key != lastKey {
-		index = append(index, indexEntry{lastKey, int64(lastOffset)})
+		index = append(index, indexEntry{lastKey, lastOffset})
 	}
 
 	t.File = csvFile
@@ -98,9 +100,8 @@ type Profile struct {
 }
 
 type Result struct {
-	Values    []string
-	KeyExists bool
-	Profile   Profile
+	Values  []string
+	Profile Profile
 }
 
 func (t *SSTable) Get(key string) (Result, error) {
@@ -115,14 +116,14 @@ func (t *SSTable) Get(key string) (Result, error) {
 
 	if offset == -1 {
 		// log.Printf("Not found offset: %v\n", key)
-		return Result{nil, false, profile}, nil
+		return Result{nil, profile}, nil
 	}
 
 	// log.Printf("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
 
 	file, err := os.Open(t.File)
 	if err != nil {
-		return Result{nil, false, profile}, fmt.Errorf("failed to open file: %w", err)
+		return Result{nil, profile}, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -132,22 +133,22 @@ func (t *SSTable) Get(key string) (Result, error) {
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
-		return Result{nil, false, profile}, fmt.Errorf("failed to seek file: %w", err)
+		return Result{nil, profile}, fmt.Errorf("failed to seek file: %w", err)
 	}
 
 	time2 = time.Now()
 	profile.Seek = time2.Sub(time1)
 	time1 = time2
 
-	value, keyExists, err := t.scan(file, key, offset, limit)
+	value, err := t.scan(file, key, offset, limit)
 	if err != nil {
-		return Result{nil, false, profile}, fmt.Errorf("failed to scan file: %w", err)
+		return Result{nil, profile}, fmt.Errorf("failed to scan file: %w", err)
 	}
 
 	time2 = time.Now()
 	profile.Scan = time2.Sub(time1)
 
-	return Result{value, keyExists, profile}, nil
+	return Result{value, profile}, nil
 }
 
 func (t *SSTable) searchOffset(key string) (offset, limit int64) {
@@ -166,36 +167,38 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 	return t.index[idx-1].offset, t.index[idx].offset
 }
 
-func (t *SSTable) scan(f *os.File, key string, offset, limit int64) ([]string, bool, error) {
+func (t *SSTable) scan(f *os.File, key string, offset, limit int64) ([]string, error) {
 	var scannedLines int64
 
 	reader := csv.NewReader(f)
+
 	for {
 		cols, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
-			return nil, false, fmt.Errorf("failed to read file: %w", err)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return nil, fmt.Errorf("failed to read file: %w", err)
 		}
 
 		if cols[0] == key {
-			return cols[1:], true, nil
+			return cols[1:], nil
 		}
 
 		scannedLines++
 
 		if offset+reader.InputOffset() >= limit {
 			// reached to next index, means not found
-			return nil, false, nil
+			return nil, nil
 		}
 
 		if scannedLines > t.indexInterval {
 			// should never happen
-			return nil, false, fmt.Errorf("too many scanned lines: %d", scannedLines)
+			return nil, fmt.Errorf("too many scanned lines: %d", scannedLines)
 		}
 	}
 
 	// should never happen, last key should be in index
-	return nil, false, errors.New("should never reach here")
+	return nil, errors.New("should never reach here")
 }

@@ -144,12 +144,8 @@ func testDBCase(t *testing.T, db *yuccadb.YuccaDB, tableName, key string, want [
 		t.Fatal(err)
 	}
 
-	if !res.TableExists {
-		t.Fatalf("table %s does not exist", tableName)
-	}
-
-	if res.KeyExists != wantKeyExists {
-		t.Fatalf("expected keyExists %t, but got %t", wantKeyExists, res.KeyExists)
+	if (res.Values != nil) != wantKeyExists {
+		t.Fatalf("expected keyExists %t, but got %t", wantKeyExists, (res.Values != nil))
 	}
 
 	if !reflect.DeepEqual(res.Values, want) {
