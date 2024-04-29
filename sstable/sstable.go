@@ -98,7 +98,7 @@ type Profile struct {
 }
 
 type Result struct {
-	Value     string
+	Values    []string
 	KeyExists bool
 	Profile   Profile
 }
@@ -115,14 +115,14 @@ func (t *SSTable) Get(key string) (Result, error) {
 
 	if offset == -1 {
 		// log.Printf("Not found offset: %v\n", key)
-		return Result{"", false, profile}, nil
+		return Result{nil, false, profile}, nil
 	}
 
 	// log.Printf("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
 
 	file, err := os.Open(t.File)
 	if err != nil {
-		return Result{"", false, profile}, fmt.Errorf("failed to open file: %w", err)
+		return Result{nil, false, profile}, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -132,7 +132,7 @@ func (t *SSTable) Get(key string) (Result, error) {
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
-		return Result{"", false, profile}, fmt.Errorf("failed to seek file: %w", err)
+		return Result{nil, false, profile}, fmt.Errorf("failed to seek file: %w", err)
 	}
 
 	time2 = time.Now()
@@ -141,7 +141,7 @@ func (t *SSTable) Get(key string) (Result, error) {
 
 	value, keyExists, err := t.scan(file, key, offset, limit)
 	if err != nil {
-		return Result{"", false, profile}, fmt.Errorf("failed to scan file: %w", err)
+		return Result{nil, false, profile}, fmt.Errorf("failed to scan file: %w", err)
 	}
 
 	time2 = time.Now()
@@ -166,7 +166,7 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 	return t.index[idx-1].offset, t.index[idx].offset
 }
 
-func (t *SSTable) scan(f *os.File, key string, offset, limit int64) (string, bool, error) {
+func (t *SSTable) scan(f *os.File, key string, offset, limit int64) ([]string, bool, error) {
 	var scannedLines int64
 
 	reader := csv.NewReader(f)
@@ -176,26 +176,26 @@ func (t *SSTable) scan(f *os.File, key string, offset, limit int64) (string, boo
 			break
 		}
 		if err != nil {
-			return "", false, fmt.Errorf("failed to read file: %w", err)
+			return nil, false, fmt.Errorf("failed to read file: %w", err)
 		}
 
 		if cols[0] == key {
-			return cols[1], true, nil
+			return cols[1:], true, nil
 		}
 
 		scannedLines++
 
 		if offset+reader.InputOffset() >= limit {
 			// reached to next index, means not found
-			return "", false, nil
+			return nil, false, nil
 		}
 
 		if scannedLines > t.indexInterval {
 			// should never happen
-			return "", false, fmt.Errorf("too many scanned lines: %d", scannedLines)
+			return nil, false, fmt.Errorf("too many scanned lines: %d", scannedLines)
 		}
 	}
 
 	// should never happen, last key should be in index
-	return "", false, errors.New("should never reach here")
+	return nil, false, errors.New("should never reach here")
 }

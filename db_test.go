@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -114,15 +115,15 @@ func TestDB(t *testing.T) {
 		name          string
 		db            *yuccadb.YuccaDB
 		key           string
-		want          string
+		want          []string
 		wantKeyExists bool
 	}{
-		{"key exists on index", db, "0000000000", "0", true},
-		{"key does not exist on index", db, "0000099999", "99999", true},
-		{"last key", db, fmt.Sprintf("%010d", tableSize-1), strconv.Itoa(tableSize - 1), true},
-		{"before last key", db, fmt.Sprintf("%010d", tableSize-2), strconv.Itoa(tableSize - 2), true},
-		{"not found but middle of keys", db, "0000099999x", "", false},
-		{"key exists on reloaded index", db2, "0000000000", "0", true},
+		{"key exists on index", db, "0000000000", []string{"0"}, true},
+		{"key does not exist on index", db, "0000099999", []string{"99999"}, true},
+		{"last key", db, fmt.Sprintf("%010d", tableSize-1), []string{strconv.Itoa(tableSize - 1)}, true},
+		{"before last key", db, fmt.Sprintf("%010d", tableSize-2), []string{strconv.Itoa(tableSize - 2)}, true},
+		{"not found but middle of keys", db, "0000099999x", nil, false},
+		{"key exists on reloaded index", db2, "0000000000", []string{"0"}, true},
 	}
 
 	for _, c := range cases {
@@ -135,7 +136,7 @@ func TestDB(t *testing.T) {
 	}
 }
 
-func testDBCase(t *testing.T, db *yuccadb.YuccaDB, tableName, key, want string, wantKeyExists bool) {
+func testDBCase(t *testing.T, db *yuccadb.YuccaDB, tableName, key string, want []string, wantKeyExists bool) {
 	t.Helper()
 
 	res, err := db.GetValue(tableName, key)
@@ -151,8 +152,8 @@ func testDBCase(t *testing.T, db *yuccadb.YuccaDB, tableName, key, want string, 
 		t.Fatalf("expected keyExists %t, but got %t", wantKeyExists, res.KeyExists)
 	}
 
-	if res.Value != want {
-		t.Fatalf("expected %s, but got %s", want, res.Value)
+	if !reflect.DeepEqual(res.Values, want) {
+		t.Fatalf("expected %v, but got %v", want, res.Values)
 	}
 }
 
@@ -270,8 +271,8 @@ func TestReplaceTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Value != "value" {
-		t.Fatalf("expected value, but got %s", res.Value)
+	if !reflect.DeepEqual(res.Values, []string{"value"}) {
+		t.Fatalf("expected value, but got %s", res.Values)
 	}
 
 	// replace
@@ -289,7 +290,7 @@ func TestReplaceTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Value != "value2" {
-		t.Fatalf("expected value, but got %s", res.Value)
+	if !reflect.DeepEqual(res.Values, []string{"value2"}) {
+		t.Fatalf("expected value, but got %s", res.Values)
 	}
 }

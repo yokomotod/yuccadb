@@ -200,7 +200,7 @@ func cp(localFile, srcPath string) error {
 }
 
 type Result struct {
-	Value       string
+	Values      []string
 	TableExists bool
 	KeyExists   bool
 	Profile     sstable.Profile
@@ -218,7 +218,7 @@ func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 	}
 
 	return Result{
-		Value:       res.Value,
+		Values:      res.Values,
 		TableExists: true,
 		KeyExists:   res.KeyExists,
 		Profile:     res.Profile,
