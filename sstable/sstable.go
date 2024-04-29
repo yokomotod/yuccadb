@@ -1,13 +1,13 @@
 package sstable
 
 import (
-	"bufio"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -24,7 +24,7 @@ type indexEntry struct {
 type SSTable struct {
 	File          string
 	index         []indexEntry
-	indexInterval int
+	indexInterval int64
 }
 
 func NewSSTable(csvFile string) (*SSTable, error) {
@@ -47,20 +47,22 @@ func (t *SSTable) load(csvFile string) error {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
+	reader := csv.NewReader(file)
 
-	var count, offset, lastOffset int
+	var count, lastOffset int64
 
 	var lastKey string
 
 	index := make([]indexEntry, 0)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		cols := strings.Split(line, ",")
-
-		if len(cols) != expectedCols {
-			return fmt.Errorf("invalid line: %s", line)
+	for {
+		offset := reader.InputOffset()
+		cols, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read file: %w", err)
 		}
 
 		key := cols[0]
@@ -71,13 +73,8 @@ func (t *SSTable) load(csvFile string) error {
 		}
 
 		lastOffset = offset
-		offset += len(line) + 1
 		count++
 		lastKey = key
-	}
-
-	if scanner.Err() != nil {
-		return fmt.Errorf("failed to scan file: %w", err)
 	}
 
 	// add last key
@@ -170,18 +167,16 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 }
 
 func (t *SSTable) scan(f *os.File, key string, offset, limit int64) (string, bool, error) {
-	var scannedLines, scannedBytes int
+	var scannedLines int64
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// log.Printf("Read: %s\n", line)
-
-		// split line and return value
-		cols := strings.Split(line, ",")
-		if len(cols) != expectedCols {
-			return "", false, fmt.Errorf("invalid line: %s", line)
+	reader := csv.NewReader(f)
+	for {
+		cols, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", false, fmt.Errorf("failed to read file: %w", err)
 		}
 
 		if cols[0] == key {
@@ -189,9 +184,8 @@ func (t *SSTable) scan(f *os.File, key string, offset, limit int64) (string, boo
 		}
 
 		scannedLines++
-		scannedBytes += len(line) + 1
 
-		if offset+int64(scannedBytes) >= limit {
+		if offset+reader.InputOffset() >= limit {
 			// reached to next index, means not found
 			return "", false, nil
 		}
@@ -202,10 +196,6 @@ func (t *SSTable) scan(f *os.File, key string, offset, limit int64) (string, boo
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return "", false, fmt.Errorf("failed to scan file: %w", err)
-	}
-
-	// should never happen
+	// should never happen, last key should be in index
 	return "", false, errors.New("should never reach here")
 }
