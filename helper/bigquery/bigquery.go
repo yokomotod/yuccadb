@@ -67,7 +67,7 @@ func downloadCSV(ctx context.Context, gcsBucket, gcsObject, destPath string) err
 	}
 	defer gcsClient.Close()
 
-	f, err := os.Create(destPath)
+	f, err := os.OpenFile(destPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return fmt.Errorf("os.Create: %v", err)
 	}

@@ -9,6 +9,9 @@ import (
 	"os"
 	"sort"
 	"time"
+
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 const (
@@ -41,6 +44,8 @@ func NewSSTable(csvFile string) (*SSTable, error) {
 }
 
 func (t *SSTable) load(csvFile string) error {
+	time0 := time.Now()
+
 	file, err := os.Open(csvFile)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %s, %w", csvFile, err)
@@ -68,9 +73,12 @@ func (t *SSTable) load(csvFile string) error {
 		}
 
 		key := cols[0]
+		if key < lastKey {
+			return fmt.Errorf("keys are not sorted: %s, %s", lastKey, key)
+		}
 
 		if count%t.indexInterval == 0 {
-			// log.Printf("Offset: %d Line: %s\n", offset, line)
+			// log.Printf("Offset: %d Cols: %v\n", offset, cols)
 			index = append(index, indexEntry{key, offset})
 		}
 
@@ -87,7 +95,9 @@ func (t *SSTable) load(csvFile string) error {
 	t.File = csvFile
 	t.index = index
 
-	log.Printf("Loaded %s, %d items\n", csvFile, count)
+	time1 := time.Now()
+	p := message.NewPrinter(language.English)
+	log.Println(p.Sprintf("Loaded %s with %d items (%s)", csvFile, count, time1.Sub(time0).String()))
 
 	return nil
 }
@@ -157,11 +167,17 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 	})
 
 	if idx >= len(t.index) {
+		// key is greater than last key
 		return -1, -1
 	}
 
 	if t.index[idx].key == key {
 		return t.index[idx].offset, t.index[idx].offset
+	}
+
+	if idx == 0 {
+		// key is less than first key
+		return -1, -1
 	}
 
 	return t.index[idx-1].offset, t.index[idx].offset
