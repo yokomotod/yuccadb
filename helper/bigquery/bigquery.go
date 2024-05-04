@@ -29,18 +29,77 @@ func splitGCSPath(gcsPath string) (bucketName, prefix string, err error) {
 	return bucketName, prefix, nil
 }
 
-func extractToGCS(ctx context.Context, datasetID, tableID, gcsURI string) error {
+type BQHelper struct {
+	BQClient    *bigquery.Client
+	GCSClient   *storage.Client
+	DownloadDir string
+	GCSPath     string
+	gcsBucket   string
+	gcsPrefix   string
+}
+
+func NewBQHelper(ctx context.Context, downloadDir, gcsPath string) (*BQHelper, error) {
 	bqClient, err := bigquery.NewClient(ctx, bigquery.DetectProjectID)
 	if err != nil {
-		return fmt.Errorf("bigquery.NewClient: %w", err)
+		return nil, fmt.Errorf("bigquery.NewClient: %w", err)
 	}
-	defer bqClient.Close()
 
+	gcsClient, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("storage.NewClient: %w", err)
+	}
+
+	gcsBucket, gcsPrefix, err := splitGCSPath(gcsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BQHelper{
+		BQClient:    bqClient,
+		GCSClient:   gcsClient,
+		DownloadDir: downloadDir,
+		GCSPath:     gcsPath,
+		gcsBucket:   gcsBucket,
+		gcsPrefix:   gcsPrefix,
+	}, nil
+}
+
+func (h *BQHelper) Close() error {
+	if err := h.BQClient.Close(); err != nil {
+		return fmt.Errorf("BQClient.Close: %w", err)
+	}
+
+	if err := h.GCSClient.Close(); err != nil {
+		return fmt.Errorf("GCSClient.Close: %w", err)
+	}
+
+	return nil
+}
+
+func (h *BQHelper) splitFullTableID(fullTableID string) (projectID, datasetID, tableID string, err error) {
+	parts := strings.Split(fullTableID, ".")
+	if len(parts) != 2 && len(parts) != 3 {
+		return "", "", "", fmt.Errorf("invalid full table ID format")
+	}
+
+	if len(parts) == 2 {
+		projectID := h.BQClient.Project()
+		if projectID == "" {
+			return "", "", "", fmt.Errorf("failed to detect project ID")
+		}
+
+		return projectID, parts[0], parts[1], nil
+	}
+
+	return parts[0], parts[1], parts[2], nil
+}
+
+func (h *BQHelper) extractToGCS(ctx context.Context, projectID, datasetID, tableID, gcsURI string) error {
 	gcsRef := bigquery.NewGCSReference(gcsURI)
 	gcsRef.Compression = bigquery.Gzip
 	gcsRef.DestinationFormat = bigquery.CSV
 
-	extractor := bqClient.Dataset(datasetID).Table(tableID).ExtractorTo(gcsRef)
+	extractor := h.BQClient.DatasetInProject(projectID, datasetID).Table(tableID).ExtractorTo(gcsRef)
 	extractor.DisableHeader = true
 
 	job, err := extractor.Run(ctx)
@@ -59,14 +118,7 @@ func extractToGCS(ctx context.Context, datasetID, tableID, gcsURI string) error 
 }
 
 // gcsPath: gs://bucket-name/prefix
-func downloadCSV(ctx context.Context, gcsBucket, gcsObject, destPath string) error {
-
-	gcsClient, err := storage.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("storage.NewClient: %w", err)
-	}
-	defer gcsClient.Close()
-
+func (h *BQHelper) downloadCSV(ctx context.Context, gcsObject, destPath string) error {
 	f, err := os.OpenFile(destPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return fmt.Errorf("os.Create: %v", err)
@@ -77,7 +129,7 @@ func downloadCSV(ctx context.Context, gcsBucket, gcsObject, destPath string) err
 		}
 	})()
 
-	rc, err := gcsClient.Bucket(gcsBucket).Object(gcsObject).NewReader(ctx)
+	rc, err := h.GCSClient.Bucket(h.gcsBucket).Object(gcsObject).NewReader(ctx)
 	if err != nil {
 		return fmt.Errorf("Object(%q).NewReader: %v", gcsObject, err)
 	}
@@ -96,24 +148,24 @@ func downloadCSV(ctx context.Context, gcsBucket, gcsObject, destPath string) err
 	return nil
 }
 
-func DownloadTableCSV(ctx context.Context, datasetID, tableID, gcsPath, destPath string) error {
-	gcsBucket, gcsPrefix, err := splitGCSPath(gcsPath)
+func (h *BQHelper) DownloadTableCSV(ctx context.Context, fullTableID, filename string) error {
+	projectID, datasetID, tableID, err := h.splitFullTableID(fullTableID)
 	if err != nil {
-		return fmt.Errorf("splitGCSPath: %w", err)
+		return fmt.Errorf("splitTableID: %w", err)
 	}
 
-	gcsURI := gcsPath + "/" + datasetID + "-" + tableID + "-*.csv.gz"
-	gcsObject := datasetID + "-" + tableID + "-000000000000.csv.gz"
-	if gcsPrefix != "" {
-		gcsObject = gcsPrefix + "/" + gcsObject
+	gcsURI := h.GCSPath + "/" + fullTableID + "-*.csv.gz"
+	gcsObject := fullTableID + "-000000000000.csv.gz"
+	if h.gcsPrefix != "" {
+		gcsObject = h.gcsPrefix + "/" + gcsObject
 	}
 
-	err = extractToGCS(ctx, datasetID, tableID, gcsURI)
+	err = h.extractToGCS(ctx, projectID, datasetID, tableID, gcsURI)
 	if err != nil {
 		return fmt.Errorf("extractToGCS: %w", err)
 	}
 
-	err = downloadCSV(ctx, gcsBucket, gcsObject, destPath)
+	err = h.downloadCSV(ctx, gcsObject, h.DownloadDir+"/"+filename)
 	if err != nil {
 		return fmt.Errorf("downloadCSV: %w", err)
 	}
