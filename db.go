@@ -3,12 +3,14 @@ package yuccadb
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/yokomotod/yuccadb/sstable"
 )
 
 type YuccaDB struct {
 	tables map[string]*sstable.SSTable
+	mu     sync.RWMutex
 }
 
 func NewYuccaDB() *YuccaDB {
@@ -20,12 +22,18 @@ func NewYuccaDB() *YuccaDB {
 }
 
 func (db *YuccaDB) HasTable(tableName string) bool {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
 	_, ok := db.tables[tableName]
 
 	return ok
 }
 
 func (db *YuccaDB) Tables() []string {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
 	tables := make([]string, 0, len(db.tables))
 	for table := range db.tables {
 		tables = append(tables, table)
@@ -35,7 +43,7 @@ func (db *YuccaDB) Tables() []string {
 }
 
 func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
-	if _, ok := db.tables[tableName]; ok && !replace {
+	if db.HasTable(tableName) && !replace {
 		return fmt.Errorf("table %s already exists and replace is false", tableName)
 	}
 
@@ -44,7 +52,9 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
 
+	db.mu.Lock()
 	db.tables[tableName] = table
+	db.mu.Unlock()
 
 	return nil
 }
@@ -57,7 +67,10 @@ type Result struct {
 var ErrTableNotFound = errors.New("table not found")
 
 func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
+	db.mu.RLock()
 	ssTable, tableExists := db.tables[tableName]
+	db.mu.RUnlock()
+
 	if !tableExists {
 		return Result{}, ErrTableNotFound
 	}
