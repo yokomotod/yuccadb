@@ -3,7 +3,6 @@ package bigquery
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/yokomotod/yuccadb"
@@ -31,11 +30,17 @@ func (h *BQHelper) ImportTables(ctx context.Context, db *yuccadb.YuccaDB, tableM
 		}
 
 		lastSynced, ok := db.TableTimestamp(table.DBTableName)
+
 		if ok && !tableMeta.LastModifiedTime.After(lastSynced) {
+			h.Logger.Tracef("Table %q - `%s.%s.%s` is up to date, skip syncing (last modified: %s, last synced: %s)\n", table.DBTableName, projectID, datasetID, tableID, tableMeta.LastModifiedTime.Format(time.RFC3339), lastSynced.Format(time.RFC3339))
 			continue
 		}
 
-		log.Printf("Importing table %s to %s\n", table.BQFullTableID, table.DBTableName)
+		if ok {
+			h.Logger.Debugf("Table %q - `%s.%s.%s` is outdated, start syncing (last modified: %s, last synced: %s)\n", table.DBTableName, projectID, datasetID, tableID, tableMeta.LastModifiedTime.Format(time.RFC3339), lastSynced.Format(time.RFC3339))
+		} else {
+			h.Logger.Debugf("Table %q - `%s.%s.%s` is not imported yet, start importing (last modified: %s)\n", table.DBTableName, projectID, datasetID, tableID, tableMeta.LastModifiedTime.Format(time.RFC3339))
+		}
 
 		// table name _ timestamp .csv
 		filename := table.DBTableName + "_" + tableMeta.LastModifiedTime.Format("20060102150405") + ".csv"
@@ -46,7 +51,7 @@ func (h *BQHelper) ImportTables(ctx context.Context, db *yuccadb.YuccaDB, tableM
 
 		db.PutTable(table.DBTableName, h.DownloadDir+"/"+filename, true)
 
-		log.Printf("Synced table %s to %s\n", table.BQFullTableID, table.DBTableName)
+		h.Logger.Infof("Imported table `%s.%s.%s` to %q\n", projectID, datasetID, tableID, table.DBTableName)
 	}
 
 	return nil

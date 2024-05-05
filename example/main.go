@@ -7,32 +7,35 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/storage"
 	"github.com/yokomotod/yuccadb"
 	helper "github.com/yokomotod/yuccadb/helper/bigquery"
+	"github.com/yokomotod/yuccadb/logger"
 	"google.golang.org/api/googleapi"
 )
 
 const (
+	dataDir   = "./data"
 	datasetID = "yuccadb_example"
 	tableID   = "sync_test"
 )
 
 func createBucketIfNotExists(ctx context.Context, client *storage.Client, bucketName string) error {
-	log.Printf("Checking bucket `%s` exists\n", bucketName)
+	log.Printf("Checking bucket %q exists\n", bucketName)
 	bucket := client.Bucket(bucketName)
 	_, err := bucket.Attrs(ctx)
 	if err == nil {
-		log.Printf("OK. Bucket `%s` already exists\n", bucketName)
+		log.Printf("OK. Bucket %q already exists\n", bucketName)
 		return nil
 	}
 	if err != storage.ErrBucketNotExist {
 		return fmt.Errorf("bucket.Attrs: %w", err)
 	}
 
-	log.Printf("Creating bucket `%s`\n", bucketName)
+	log.Printf("Creating bucket %q\n", bucketName)
 	if err := bucket.Create(ctx, os.Getenv("GOOGLE_CLOUD_PROJECT"), nil); err != nil {
 		return fmt.Errorf("bucket.Create: %w", err)
 	}
@@ -41,18 +44,20 @@ func createBucketIfNotExists(ctx context.Context, client *storage.Client, bucket
 }
 
 func createDatasetIfNotExists(ctx context.Context, client *bigquery.Client) error {
+	log.Printf("Checking dataset `%s.%s` exists\n", client.Project(), datasetID)
 	ds := client.Dataset(datasetID)
 	_, err := ds.Metadata(ctx)
 	if err == nil {
+		log.Printf("OK. Dataset `%s.%s` already exists\n", client.Project(), datasetID)
 		return nil
 	}
 
 	var gerr *googleapi.Error
 	if !errors.As(err, &gerr) || gerr.Code != 404 {
-		return fmt.Errorf("ds.Metadata: %w", err)
+		return fmt.Errorf("dataset.Metadata: %w", err)
 	}
 
-	log.Printf("Dataset `%s` not exists, creating\n", datasetID)
+	log.Printf("Creating dataset `%s.%s`\n", client.Project(), datasetID)
 	if err := ds.Create(ctx, &bigquery.DatasetMetadata{}); err != nil {
 		return fmt.Errorf("ds.Create: %w", err)
 	}
@@ -60,11 +65,24 @@ func createDatasetIfNotExists(ctx context.Context, client *bigquery.Client) erro
 	return nil
 }
 
-func updateBQTable(ctx context.Context, client *bigquery.Client) error {
-	if err := createDatasetIfNotExists(ctx, client); err != nil {
-		return fmt.Errorf("createDatasetIfNotExists: %w", err)
+func existsBQTable(ctx context.Context, client *bigquery.Client) (bool, error) {
+	log.Printf("Checking BQ table `%s.%s.%s` exists\n", client.Project(), datasetID, tableID)
+	_, err := client.Dataset(datasetID).Table(tableID).Metadata(ctx)
+	if err == nil {
+		log.Printf("OK. Table `%s.%s.%s` already exists\n", client.Project(), datasetID, tableID)
+		return true, nil
 	}
 
+	var gerr *googleapi.Error
+	if !errors.As(err, &gerr) || gerr.Code != 404 {
+		return false, fmt.Errorf("table.Metadata: %w", err)
+	}
+
+	log.Printf("Table `%s.%s.%s` does not exist\n", client.Project(), datasetID, tableID)
+	return false, nil
+}
+
+func updateBQTable(ctx context.Context, client *bigquery.Client) error {
 	query := client.Query(`
 		WITH
 		  numbers AS (
@@ -98,7 +116,7 @@ func updateBQTable(ctx context.Context, client *bigquery.Client) error {
 	query.CreateDisposition = bigquery.CreateIfNeeded
 	query.WriteDisposition = bigquery.WriteTruncate
 
-	log.Printf("Creating/Updating table `%s.%s`\n", datasetID, tableID)
+	log.Printf("Creating/Updating table `%s.%s.%s`\n", client.Project(), datasetID, tableID)
 	job, err := query.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("query.Run: %w", err)
@@ -113,7 +131,7 @@ func updateBQTable(ctx context.Context, client *bigquery.Client) error {
 		return fmt.Errorf("status.Err(): %w", err)
 	}
 
-	log.Printf("Table `%s.%s` updated\n", datasetID, tableID)
+	log.Printf("Table `%s.%s.%s` updated\n", client.Project(), datasetID, tableID)
 	return nil
 }
 
@@ -125,11 +143,10 @@ type handler struct {
 func (h *handler) get(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 
-	log.Printf("get key: %s", key)
 	res, err := h.db.GetValue(tableID, key)
 	if err != nil {
 		if err == yuccadb.ErrTableNotFound {
-			http.Error(w, fmt.Sprintf("table not found: %s", tableID), http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("table not found: %q", tableID), http.StatusNotFound)
 			return
 		}
 
@@ -138,7 +155,7 @@ func (h *handler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if res.Values == nil {
-		http.Error(w, fmt.Sprintf("key not found: %s", key), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("key not found: %q", key), http.StatusNotFound)
 		return
 	}
 
@@ -154,22 +171,64 @@ func (h *handler) put(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HTTPステータスコードを記録するためのラッパー
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		responseWriter := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+		next.ServeHTTP(responseWriter, r)
+
+		log.Printf("[ACCESS] %s %q %d %v", r.Method, r.URL.Path, responseWriter.status, time.Since(start))
+	})
+}
+
 func run() error {
 	ctx := context.Background()
 	db := yuccadb.NewYuccaDB()
+	db.Logger = &logger.DefaultLogger{Level: logger.Trace}
 
 	gcsBucket := os.Getenv("GCS_BUCKET")
-	bqHelper, err := helper.NewBQHelper(ctx, ".", "gs://"+gcsBucket)
+	bqHelper, err := helper.NewBQHelper(ctx, dataDir, "gs://"+gcsBucket)
 	if err != nil {
 		return fmt.Errorf("helper.NewBQHelper: %w", err)
+	}
+
+	log.Printf("Refreshing data directory %q\n", dataDir)
+	if err := os.RemoveAll(dataDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("os.RemoveAll: %w", err)
+	}
+	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
+		return fmt.Errorf("os.MkdirAll: %w", err)
 	}
 
 	if err := createBucketIfNotExists(ctx, bqHelper.GCSClient, gcsBucket); err != nil {
 		return fmt.Errorf("createBucketIfNotExists: %w", err)
 	}
 
-	if err := updateBQTable(ctx, bqHelper.BQClient); err != nil {
-		return fmt.Errorf("updateBQTable: %w", err)
+	if err := createDatasetIfNotExists(ctx, bqHelper.BQClient); err != nil {
+		return fmt.Errorf("createDatasetIfNotExists: %w", err)
+	}
+
+	exists, err := existsBQTable(ctx, bqHelper.BQClient)
+	if err != nil {
+		return fmt.Errorf("existsBQTable: %w", err)
+	}
+	if !exists {
+		if err := updateBQTable(ctx, bqHelper.BQClient); err != nil {
+			return fmt.Errorf("updateBQTable: %w", err)
+		}
 	}
 
 	tableMapping := helper.TableMapping{
@@ -177,7 +236,7 @@ func run() error {
 		DBTableName:   tableID,
 	}
 
-	log.Printf("Starting sync tables: `%s` -> `%s`\n", tableMapping.BQFullTableID, tableMapping.DBTableName)
+	log.Printf("Starting sync tables: %q -> %q\n", tableMapping.BQFullTableID, tableMapping.DBTableName)
 	ch, err := bqHelper.StartSyncTables(ctx, db, []helper.TableMapping{tableMapping})
 	if err != nil {
 		return fmt.Errorf("bqHelper.ImportTables: %w", err)
@@ -190,13 +249,16 @@ func run() error {
 
 	h := &handler{db: db, bqHelper: bqHelper}
 
-	http.HandleFunc("GET /v1/{key}", h.get)
-	http.HandleFunc("GET /v1/{$}", h.get)
-	http.HandleFunc("POST /v1/update", h.put)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/{key}", h.get)
+	mux.HandleFunc("GET /v1/{$}", h.get)
+	mux.HandleFunc("POST /v1/_update", h.put)
+
+	loggedMux := loggingMiddleware(mux)
 
 	log.Println("Starting HTTP server on port 8080")
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", loggedMux); err != nil {
 		return fmt.Errorf("http.ListenAndServe: %w", err)
 	}
 

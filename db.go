@@ -3,11 +3,11 @@ package yuccadb
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/yokomotod/yuccadb/logger"
 	"github.com/yokomotod/yuccadb/sstable"
 )
 
@@ -19,11 +19,15 @@ type yuccaTable struct {
 type YuccaDB struct {
 	tables map[string]yuccaTable
 	mu     sync.RWMutex
+	Logger logger.Logger
 }
 
 func NewYuccaDB() *YuccaDB {
 	db := &YuccaDB{
 		tables: make(map[string]yuccaTable),
+		Logger: &logger.DefaultLogger{
+			Level: logger.Warning,
+		},
 	}
 
 	return db
@@ -52,10 +56,10 @@ func (db *YuccaDB) TableTimestamp(tableName string) (time.Time, bool) {
 
 func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 	if db.HasTable(tableName) && !replace {
-		return fmt.Errorf("table %s already exists and replace is false", tableName)
+		return fmt.Errorf("table %q already exists and replace is false", tableName)
 	}
 
-	table, err := sstable.NewSSTable(file)
+	table, err := sstable.NewSSTable(file, db.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
@@ -72,7 +76,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 		return nil
 	}
 
-	log.Printf("Remove old table file: %s\n", oldTable.ssTable.File)
+	db.Logger.Debugf("Remove old table file: %q\n", oldTable.ssTable.File)
 
 	if err = os.Remove(oldTable.ssTable.File); err != nil {
 		return fmt.Errorf("failed to remove old table file: %w", err)

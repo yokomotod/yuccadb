@@ -11,11 +11,12 @@ import (
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/storage"
+	"github.com/yokomotod/yuccadb/logger"
 )
 
 func splitGCSPath(gcsPath string) (bucketName, prefix string, err error) {
 	if !strings.HasPrefix(gcsPath, "gs://") {
-		return "", "", fmt.Errorf("invalid gcsPath: %s", gcsPath)
+		return "", "", fmt.Errorf("invalid gcsPath: %q", gcsPath)
 	}
 
 	path := strings.TrimPrefix(gcsPath, "gs://")
@@ -36,6 +37,7 @@ type BQHelper struct {
 	GCSPath     string
 	gcsBucket   string
 	gcsPrefix   string
+	Logger      logger.Logger
 }
 
 func NewBQHelper(ctx context.Context, downloadDir, gcsPath string) (*BQHelper, error) {
@@ -61,6 +63,7 @@ func NewBQHelper(ctx context.Context, downloadDir, gcsPath string) (*BQHelper, e
 		GCSPath:     gcsPath,
 		gcsBucket:   gcsBucket,
 		gcsPrefix:   gcsPrefix,
+		Logger:      &logger.DefaultLogger{},
 	}, nil
 }
 
@@ -102,6 +105,8 @@ func (h *BQHelper) extractToGCS(ctx context.Context, projectID, datasetID, table
 	extractor := h.BQClient.DatasetInProject(projectID, datasetID).Table(tableID).ExtractorTo(gcsRef)
 	extractor.DisableHeader = true
 
+	h.Logger.Debugf("Extracting table `%s.%s.%s` to %q\n", projectID, datasetID, tableID, gcsURI)
+
 	job, err := extractor.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("extractor.Run: %w", err)
@@ -114,14 +119,18 @@ func (h *BQHelper) extractToGCS(ctx context.Context, projectID, datasetID, table
 		return fmt.Errorf("status.Err(): %w", status.Err())
 	}
 
+	h.Logger.Debugf("Extracted table `%s.%s.%s` to %q\n", projectID, datasetID, tableID, gcsURI)
+
 	return nil
 }
 
 // gcsPath: gs://bucket-name/prefix
 func (h *BQHelper) downloadCSV(ctx context.Context, gcsObject, destPath string) error {
+	h.Logger.Debugf("Downloading %q to %q\n", gcsObject, destPath)
+
 	f, err := os.OpenFile(destPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return fmt.Errorf("os.Create: %v", err)
+		return fmt.Errorf("os.OpenFile(%q): %v", destPath, err)
 	}
 	defer (func() {
 		if err := f.Close(); err != nil {
@@ -144,6 +153,8 @@ func (h *BQHelper) downloadCSV(ctx context.Context, gcsObject, destPath string) 
 	if _, err := io.Copy(f, gr); err != nil {
 		return fmt.Errorf("io.Copy: %v", err)
 	}
+
+	h.Logger.Debugf("Downloaded %q to %q\n", gcsObject, destPath)
 
 	return nil
 }

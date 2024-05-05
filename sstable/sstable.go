@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
 	"time"
 
+	"github.com/yokomotod/yuccadb/logger"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -28,16 +28,18 @@ type SSTable struct {
 	File          string
 	index         []indexEntry
 	indexInterval int64
+	Logger        logger.Logger
 }
 
-func NewSSTable(csvFile string) (*SSTable, error) {
+func NewSSTable(csvFile string, logger logger.Logger) (*SSTable, error) {
 	table := &SSTable{
 		indexInterval: defaultIndexInterval,
+		Logger:        logger,
 	}
 
 	err := table.load(csvFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load table: %w", err)
+		return nil, fmt.Errorf("load: %w", err)
 	}
 
 	return table, nil
@@ -48,7 +50,7 @@ func (t *SSTable) load(csvFile string) error {
 
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %s, %w", csvFile, err)
+		return fmt.Errorf("os.Open(%q): %w", csvFile, err)
 	}
 	defer file.Close()
 
@@ -69,16 +71,15 @@ func (t *SSTable) load(csvFile string) error {
 				break
 			}
 
-			return fmt.Errorf("failed to read file: %w", err)
+			return fmt.Errorf("csv.Reader.Read: %w", err)
 		}
 
 		key := cols[0]
 		if key < lastKey {
-			return fmt.Errorf("keys are not sorted: %s, %s", lastKey, key)
+			return fmt.Errorf("keys are not sorted: %q, %q", lastKey, key)
 		}
 
 		if count%t.indexInterval == 0 {
-			// log.Printf("Offset: %d Cols: %v\n", offset, cols)
 			index = append(index, indexEntry{key, offset})
 		}
 
@@ -97,7 +98,7 @@ func (t *SSTable) load(csvFile string) error {
 
 	time1 := time.Now()
 	p := message.NewPrinter(language.English)
-	log.Println(p.Sprintf("Loaded %s with %d items (%s)", csvFile, count, time1.Sub(time0).String()))
+	t.Logger.Infof(p.Sprintf("Loaded %q with %d items (%s)", csvFile, count, time1.Sub(time0).String()))
 
 	return nil
 }
@@ -125,15 +126,14 @@ func (t *SSTable) Get(key string) (Result, error) {
 	time1 = time2
 
 	if offset == -1 {
-		// log.Printf("Not found offset: %v\n", key)
 		return Result{nil, profile}, nil
 	}
 
-	// log.Printf("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
+	t.Logger.Tracef("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
 
 	file, err := os.Open(t.File)
 	if err != nil {
-		return Result{nil, profile}, fmt.Errorf("failed to open file: %w", err)
+		return Result{nil, profile}, fmt.Errorf("os.Open(%q): %w", t.File, err)
 	}
 	defer file.Close()
 
@@ -143,16 +143,16 @@ func (t *SSTable) Get(key string) (Result, error) {
 
 	_, err = file.Seek(offset, 0)
 	if err != nil {
-		return Result{nil, profile}, fmt.Errorf("failed to seek file: %w", err)
+		return Result{nil, profile}, fmt.Errorf("file.Seek: %w", err)
 	}
 
 	time2 = time.Now()
 	profile.Seek = time2.Sub(time1)
 	time1 = time2
 
-	value, err := t.scan(file, key, offset, limit)
+	value, err := t.scanFile(file, key, offset, limit)
 	if err != nil {
-		return Result{nil, profile}, fmt.Errorf("failed to scan file: %w", err)
+		return Result{nil, profile}, fmt.Errorf("scanFile: %w", err)
 	}
 
 	time2 = time.Now()
@@ -167,23 +167,27 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 	})
 
 	if idx >= len(t.index) {
-		// key is greater than last key
+		t.Logger.Tracef("Offset not found for %v, greater than last key %v\n", key, t.index[len(t.index)-1].key)
+
 		return -1, -1
 	}
 
 	if t.index[idx].key == key {
+		t.Logger.Tracef("Offset found for %v, at %v\n", key, t.index[idx].offset)
+
 		return t.index[idx].offset, t.index[idx].offset
 	}
 
 	if idx == 0 {
-		// key is less than first key
+		t.Logger.Tracef("Offset not found for %v, less than first key %v\n", key, t.index[0].key)
+
 		return -1, -1
 	}
 
 	return t.index[idx-1].offset, t.index[idx].offset
 }
 
-func (t *SSTable) scan(f *os.File, key string, offset, limit int64) ([]string, error) {
+func (t *SSTable) scanFile(f *os.File, key string, offset, limit int64) ([]string, error) {
 	var scannedLines int64
 
 	reader := csv.NewReader(f)

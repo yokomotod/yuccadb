@@ -48,7 +48,7 @@ func BenchmarkDB(b *testing.B) {
 		}
 
 		if res.Values == nil {
-			b.Fatalf("key %s does not exist", key)
+			b.Fatalf("key %q does not exist", key)
 		}
 
 		total.SearchOffset += res.Profile.SearchOffset
@@ -83,7 +83,7 @@ func BenchmarkDBParallel(b *testing.B) {
 			}
 
 			if res.Values == nil {
-				b.Fatalf("key %s does not exist", key)
+				b.Fatalf("key %q does not exist", key)
 			}
 
 			keySeed++
