@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/storage"
@@ -184,20 +183,20 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		// start := time.Now()
 
 		responseWriter := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 
 		next.ServeHTTP(responseWriter, r)
 
-		log.Printf("[ACCESS] %s %q %d %v", r.Method, r.URL.Path, responseWriter.status, time.Since(start))
+		// log.Printf("[ACCESS] %s %q %d %v", r.Method, r.URL.Path, responseWriter.status, time.Since(start))
 	})
 }
 
 func run() error {
 	ctx := context.Background()
 	db := yuccadb.NewYuccaDB()
-	db.Logger = &logger.DefaultLogger{Level: logger.Trace}
+	db.Logger = &logger.DefaultLogger{Level: logger.Warning}
 
 	gcsBucket := os.Getenv("GCS_BUCKET")
 	bqHelper, err := helper.NewBQHelper(ctx, dataDir, "gs://"+gcsBucket)

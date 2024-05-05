@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -15,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	// locust 2.0 support is not tagged yet, so `go get -u github.com/myzhan/boomer@master`` is used
 	"github.com/myzhan/boomer"
 )
 
@@ -45,10 +45,10 @@ var (
 	disableKeepalive   bool
 )
 
-const size = 100_000_000
+const size = 1_000_000
 
 func worker() {
-	key := fmt.Sprintf("%010d", rand.Intn(size)) //nolint:gosec
+	key := strconv.Itoa(rand.Intn(size)) //nolint:gosec
 	url := url + key
 
 	request, err := http.NewRequestWithContext(context.Background(), method, url, bytes.NewBuffer(postBody))
