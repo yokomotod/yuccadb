@@ -2,7 +2,6 @@ package yuccadb_test
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,84 +10,50 @@ import (
 	"testing"
 
 	"github.com/yokomotod/yuccadb"
+	"github.com/yokomotod/yuccadb/internals/testdata"
 )
 
-const (
-	testFileDir   = "./testfile"
-	testTableName = "test"
-)
+// const (
+// 	testDataDir   = "./testdata"
+// 	testTableName = "test"
+// )
 
-func TestMain(m *testing.M) {
-	err := genTestCsv()
-	if err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
+// var tableSize int
 
-	// run test
-	code := m.Run()
+// func init() {
+// 	flag.IntVar(&tableSize, "table-size", 1_000_000, "size of the table")
+// }
 
-	os.Exit(code)
-}
+// func TestMain(m *testing.M) {
+// 	flag.Parse()
 
-const tableSize = 1_000_000
+// 	err := testdata.GenTestCsv(testDataDir, tableSize)
+// 	if err != nil {
+// 		log.Println(err)
+// 		os.Exit(1)
+// 	}
 
-func testFileName() string {
-	size, unit := tableSize, ""
-	units := []string{"k", "m", "g", "t"}
+// 	// run test
+// 	code := m.Run()
 
-	for i := 0; size >= 1_000; size, i = size/1_000, i+1 {
-		unit = units[i]
-	}
-
-	return fmt.Sprintf("./%s/test%d%s.csv", testFileDir, size, unit)
-}
-
-func genTestCsv() error {
-	testFile := testFileName()
-
-	// check test file exists and skip generating
-	if _, err := os.Stat(testFile); err == nil {
-		log.Printf("Skip generating %s\n", testFile)
-
-		return nil
-	}
-
-	log.Printf("Generating %s...\n", testFile)
-
-	if _, err := os.Stat(testFileDir); os.IsNotExist(err) {
-		if err := os.Mkdir(testFileDir, 0o755); err != nil {
-			return fmt.Errorf("failed to create data directory: %w", err)
-		}
-	}
-
-	file, err := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE, 0o600)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-
-	for i := range tableSize {
-		key := fmt.Sprintf("%010d", i)
-		value := strconv.Itoa(i)
-
-		_, err := file.WriteString(key + "," + value + "\n")
-		if err != nil {
-			return fmt.Errorf("failed to write file: %w", err)
-		}
-	}
-
-	return nil
-}
+// 	os.Exit(code)
+// }
 
 func TestDB(t *testing.T) {
 	t.Parallel()
 
-	testFile := testFileName()
+	tempDir := t.TempDir()
+
+	tableSize := 10_000
+	testFile, err := testdata.GenTestCsv(tempDir, tableSize)
+	if err != nil {
+		t.Fatalf("GenTestCsv: %v", err)
+	}
 
 	db := yuccadb.NewYuccaDB()
 
-	if err := db.PutTable(testTableName, testFile, false); err != nil {
-		t.Fatal(err)
+	if err := db.PutTable("test", testFile, false); err != nil {
+		t.Fatalf("db.PutTable: %v", err)
 	}
 
 	cases := []struct {
@@ -99,18 +64,17 @@ func TestDB(t *testing.T) {
 		wantKeyExists bool
 	}{
 		{"key exists on index", db, "0000000000", []string{"0"}, true},
-		{"key does not exist on index", db, "0000099999", []string{"99999"}, true},
+		{"key does not exist on index", db, "0000000999", []string{"999"}, true},
 		{"last key", db, fmt.Sprintf("%010d", tableSize-1), []string{strconv.Itoa(tableSize - 1)}, true},
 		{"before last key", db, fmt.Sprintf("%010d", tableSize-2), []string{strconv.Itoa(tableSize - 2)}, true},
-		{"not found but middle of keys", db, "0000099999x", nil, false},
+		{"not found but middle of keys", db, "0000000999x", nil, false},
 	}
 
 	for _, c := range cases {
-		// sub test
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			testDBCase(t, c.db, testTableName, c.key, c.want, c.wantKeyExists)
+			testDBCase(t, c.db, "test", c.key, c.want, c.wantKeyExists)
 		})
 	}
 }
@@ -185,7 +149,7 @@ func TestDuplicateTableError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	expectedErr := "table test already exists and replace is false"
+	expectedErr := "table \"test\" already exists and replace is false"
 	if err.Error() != expectedErr {
 		t.Fatalf("expected error %s, but got %s", expectedErr, err.Error())
 	}
@@ -194,22 +158,22 @@ func TestDuplicateTableError(t *testing.T) {
 func TestReplaceTable(t *testing.T) {
 	t.Parallel()
 
-	tableName := "test"
 	tempDir := t.TempDir()
-	testFile := filepath.Join(tempDir, "test.csv")
+	testFile1 := filepath.Join(tempDir, "test_a.csv")
+	testFile2 := filepath.Join(tempDir, "test_b.csv")
 
 	db := yuccadb.NewYuccaDB()
 
 	content := "key,value"
-	if err := os.WriteFile(testFile, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(testFile1, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.PutTable(tableName, testFile, false); err != nil {
+	if err := db.PutTable("test", testFile1, false); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := db.GetValue(tableName, "key")
+	res, err := db.GetValue("test", "key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,15 +184,15 @@ func TestReplaceTable(t *testing.T) {
 
 	// replace
 	content = "key,value2"
-	if err := os.WriteFile(testFile, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(testFile2, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.PutTable(tableName, testFile, true); err != nil {
+	if err := db.PutTable("test", testFile2, true); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err = db.GetValue(tableName, "key")
+	res, err = db.GetValue("test", "key")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,13 +1,14 @@
 package yuccadb_test
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"os"
 	"testing"
-	"time"
 
 	"github.com/yokomotod/yuccadb"
-	"github.com/yokomotod/yuccadb/sstable"
+	"github.com/yokomotod/yuccadb/internals/testdata"
 )
 
 // const size = 10_000_000
@@ -24,25 +25,46 @@ import (
 // BenchmarkDB-8           	   37995	     39326 ns/op
 // BenchmarkDBParallel-8   	   70704	     20128 ns/op
 
+var tableSize int
+
+func init() {
+	flag.IntVar(&tableSize, "size", 1_000_000, "size of the table")
+}
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+
+	if flag.Lookup("test.bench") != nil {
+		_, err := testdata.GenTestCsv("./testdata", tableSize)
+		if err != nil {
+			log.Println(err)
+			os.Exit(1)
+		}
+	}
+
+	code := m.Run()
+	os.Exit(code)
+}
+
 func BenchmarkDB(b *testing.B) {
-	testFile := testFileName()
+	testFile := testdata.TestCsvPath("./testdata", tableSize)
 
 	db := yuccadb.NewYuccaDB()
 
-	if err := db.PutTable(testTableName, testFile, false); err != nil {
+	if err := db.PutTable("test", testFile, false); err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
 
-	total := sstable.Profile{}
+	// total := sstable.Profile{}
 
-	startTime := time.Now()
+	// startTime := time.Now()
 
 	for keySeed := 0; keySeed < b.N; keySeed++ {
 		key := fmt.Sprintf("%010d", keySeed)
 
-		res, err := db.GetValue(testTableName, key)
+		res, err := db.GetValue("test", key)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -51,22 +73,22 @@ func BenchmarkDB(b *testing.B) {
 			b.Fatalf("key %q does not exist", key)
 		}
 
-		total.SearchOffset += res.Profile.SearchOffset
-		total.Open += res.Profile.Open
-		total.Seek += res.Profile.Seek
-		total.Scan += res.Profile.Scan
+		// total.SearchOffset += res.Profile.SearchOffset
+		// total.Open += res.Profile.Open
+		// total.Seek += res.Profile.Seek
+		// total.Scan += res.Profile.Scan
 
 		keySeed++
 	}
-	log.Printf("N: %d, time: %v, total: %+v\n", b.N, time.Since(startTime), total)
+	// log.Printf("N: %d, time: %v, total: %+v\n", b.N, time.Since(startTime), total)
 }
 
 func BenchmarkDBParallel(b *testing.B) {
-	testFile := testFileName()
+	testFile := testdata.TestCsvPath("./testdata", tableSize)
 
 	db := yuccadb.NewYuccaDB()
 
-	if err := db.PutTable(testTableName, testFile, false); err != nil {
+	if err := db.PutTable("test", testFile, false); err != nil {
 		b.Fatal(err)
 	}
 
@@ -77,7 +99,7 @@ func BenchmarkDBParallel(b *testing.B) {
 		for pb.Next() {
 			key := fmt.Sprintf("%010d", keySeed)
 
-			res, err := db.GetValue(testTableName, key)
+			res, err := db.GetValue("test", key)
 			if err != nil {
 				b.Fatal(err)
 			}

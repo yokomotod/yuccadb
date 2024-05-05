@@ -5,14 +5,41 @@ import (
 	"bufio"
 	"encoding/csv"
 	"errors"
+	"flag"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/yokomotod/yuccadb/internals/testdata"
 )
 
+var tableSize int
+
+func init() {
+	flag.IntVar(&tableSize, "size", 1_000_000, "size of the table")
+}
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+
+	if flag.Lookup("test.bench") != nil {
+		_, err := testdata.GenTestCsv("../testdata", tableSize)
+		if err != nil {
+			log.Println(err)
+			os.Exit(1)
+		}
+	}
+
+	code := m.Run()
+	os.Exit(code)
+}
+
 func BenchmarkScanner(b *testing.B) {
-	file, err := os.Open("../testfile/test1m.csv")
+	testFilePath := testdata.TestCsvPath("../testdata", tableSize)
+
+	file, err := os.Open(testFilePath)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -29,7 +56,9 @@ func BenchmarkScanner(b *testing.B) {
 }
 
 func BenchmarkCSVReader(b *testing.B) {
-	file, err := os.Open("../testfile/test1m.csv")
+	testFilePath := testdata.TestCsvPath("../testdata", tableSize)
+
+	file, err := os.Open(testFilePath)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -52,7 +81,9 @@ func BenchmarkCSVReader(b *testing.B) {
 }
 
 func BenchmarkCSVReaderWithReuseRecord(b *testing.B) {
-	file, err := os.Open("../testfile/test1m.csv")
+	testFilePath := testdata.TestCsvPath("../testdata", tableSize)
+
+	file, err := os.Open(testFilePath)
 	if err != nil {
 		b.Fatal(err)
 	}
