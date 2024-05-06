@@ -31,7 +31,7 @@ type SSTable struct {
 	Logger        logger.Logger
 }
 
-func NewSSTable(csvFile string, logger logger.Logger) (*SSTable, error) {
+func BuildSSTable(csvFile string, logger logger.Logger) (*SSTable, error) {
 	table := &SSTable{
 		indexInterval: defaultIndexInterval,
 		Logger:        logger,
@@ -119,7 +119,7 @@ func (t *SSTable) Get(key string) (Result, error) {
 	profile := Profile{}
 	time1 := time.Now()
 
-	offset, limit := t.searchOffset(key)
+	offset, limit := t.searchIndex(key)
 
 	time2 := time.Now()
 	profile.SearchOffset = time2.Sub(time1)
@@ -128,8 +128,6 @@ func (t *SSTable) Get(key string) (Result, error) {
 	if offset == -1 {
 		return Result{nil, profile}, nil
 	}
-
-	t.Logger.Tracef("Found offset: %v, limit: %v, for %v\n", offset, limit, key)
 
 	file, err := os.Open(t.File)
 	if err != nil {
@@ -140,11 +138,6 @@ func (t *SSTable) Get(key string) (Result, error) {
 	time2 = time.Now()
 	profile.Open = time2.Sub(time1)
 	time1 = time2
-
-	_, err = file.Seek(offset, 0)
-	if err != nil {
-		return Result{nil, profile}, fmt.Errorf("file.Seek: %w", err)
-	}
 
 	time2 = time.Now()
 	profile.Seek = time2.Sub(time1)
@@ -161,7 +154,7 @@ func (t *SSTable) Get(key string) (Result, error) {
 	return Result{value, profile}, nil
 }
 
-func (t *SSTable) searchOffset(key string) (offset, limit int64) {
+func (t *SSTable) searchIndex(key string) (offset, limit int64) {
 	idx := sort.Search(len(t.index), func(i int) bool {
 		return t.index[i].key >= key
 	})
@@ -173,7 +166,7 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 	}
 
 	if t.index[idx].key == key {
-		t.Logger.Tracef("Offset found for %v, at %v\n", key, t.index[idx].offset)
+		t.Logger.Tracef("Found exact offset=limit=%v for %v\n", offset, limit, key)
 
 		return t.index[idx].offset, t.index[idx].offset
 	}
@@ -184,6 +177,8 @@ func (t *SSTable) searchOffset(key string) (offset, limit int64) {
 		return -1, -1
 	}
 
+	t.Logger.Tracef("Found range offset=%v, limit=%v for %v\n", offset, limit, key)
+
 	return t.index[idx-1].offset, t.index[idx].offset
 }
 
@@ -192,6 +187,11 @@ func (t *SSTable) scanFile(f *os.File, key string, offset, limit int64) ([]strin
 
 	reader := csv.NewReader(f)
 
+	_, err := f.Seek(offset, 0)
+	if err != nil {
+		return nil, fmt.Errorf("file.Seek: %w", err)
+	}
+
 	for {
 		cols, err := reader.Read()
 		if err != nil {
@@ -199,7 +199,7 @@ func (t *SSTable) scanFile(f *os.File, key string, offset, limit int64) ([]strin
 				break
 			}
 
-			return nil, fmt.Errorf("failed to read file: %w", err)
+			return nil, fmt.Errorf("csv.Reader.Read: %w", err)
 		}
 
 		if cols[0] == key {

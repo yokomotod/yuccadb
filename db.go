@@ -33,15 +33,6 @@ func NewYuccaDB() *YuccaDB {
 	return db
 }
 
-func (db *YuccaDB) HasTable(tableName string) bool {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
-	_, ok := db.tables[tableName]
-
-	return ok
-}
-
 func (db *YuccaDB) TableTimestamp(tableName string) (time.Time, bool) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
@@ -54,17 +45,43 @@ func (db *YuccaDB) TableTimestamp(tableName string) (time.Time, bool) {
 	return table.timestamp, true
 }
 
-func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
-	if db.HasTable(tableName) && !replace {
+func (db *YuccaDB) validatePutTable(tableName, file string, replace bool) error {
+	if _, ok := db.tables[tableName]; ok && !replace {
 		return fmt.Errorf("table %q already exists and replace is false", tableName)
 	}
 
-	table, err := sstable.NewSSTable(file, db.Logger)
+	for _, table := range db.tables {
+		if table.ssTable.File == file {
+			return fmt.Errorf("file %q is already used by table %q", file, tableName)
+		}
+	}
+
+	return nil
+}
+
+func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
+	db.mu.RLock()
+	// pre-validate before heavy BuildSSTable process
+	err := db.validatePutTable(tableName, file, replace)
+	db.mu.RUnlock()
+
+	if err != nil {
+		return err
+	}
+
+	table, err := sstable.BuildSSTable(file, db.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
 
 	db.mu.Lock()
+	// re-validate with lock
+	if err := db.validatePutTable(tableName, file, replace); err != nil {
+		db.mu.Unlock()
+
+		return err
+	}
+
 	oldTable, hadOldTable := db.tables[tableName]
 	db.tables[tableName] = yuccaTable{
 		ssTable:   table,

@@ -45,6 +45,7 @@ func TestDB(t *testing.T) {
 	tempDir := t.TempDir()
 
 	tableSize := 10_000
+
 	testFile, err := testdata.GenTestCsv(tempDir, tableSize)
 	if err != nil {
 		t.Fatalf("GenTestCsv: %v", err)
