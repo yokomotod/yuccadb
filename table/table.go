@@ -53,6 +53,7 @@ func (t *Table) load(csvFile string) error {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
+	reader.ReuseRecord = true
 
 	var count, lastOffset int64
 
@@ -183,6 +184,7 @@ func (t *Table) scanFile(f *os.File, key string, offset, limit int64) ([]string,
 	var scannedLines int64
 
 	reader := csv.NewReader(f)
+	reader.ReuseRecord = true
 
 	_, err := f.Seek(offset, 0)
 	if err != nil {
