@@ -66,7 +66,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 
 	table, err := table.BuildTable(file, db.Logger)
 	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+		return fmt.Errorf("table.BuildTable: %w", err)
 	}
 
 	db.mu.Lock()
@@ -88,7 +88,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 	db.Logger.Debugf("Remove old table file: %q\n", oldTable.File())
 
 	if err = os.Remove(oldTable.File()); err != nil {
-		return fmt.Errorf("failed to remove old table file: %w", err)
+		return fmt.Errorf("os.Remove(%q): %w", oldTable.File(), err)
 	}
 
 	return nil
@@ -112,7 +112,7 @@ func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 
 	res, err := table.Get(key)
 	if err != nil {
-		return Result{}, fmt.Errorf("failed to get value: %w", err)
+		return Result{}, fmt.Errorf("table.Get: %w", err)
 	}
 
 	return Result{

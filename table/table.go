@@ -146,10 +146,6 @@ func (t *Table) Get(key string) (Result, error) {
 	profile.Open = time2.Sub(time1)
 	time1 = time2
 
-	time2 = time.Now()
-	profile.Seek = time2.Sub(time1)
-	time1 = time2
-
 	value, err := t.scanFile(file, key, offset, limit)
 	if err != nil {
 		return Result{nil, profile}, fmt.Errorf("scanFile: %w", err)
