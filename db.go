@@ -11,20 +11,15 @@ import (
 	"github.com/yokomotod/yuccadb/table"
 )
 
-type yuccaTable struct {
-	table     *table.Table
-	timestamp time.Time
-}
-
 type YuccaDB struct {
-	tables map[string]yuccaTable
+	tables map[string]*table.Table
 	mu     sync.RWMutex
 	Logger logger.Logger
 }
 
 func NewYuccaDB() *YuccaDB {
 	db := &YuccaDB{
-		tables: make(map[string]yuccaTable),
+		tables: make(map[string]*table.Table),
 		Logger: &logger.DefaultLogger{
 			Level: logger.Warning,
 		},
@@ -42,7 +37,7 @@ func (db *YuccaDB) TableTimestamp(tableName string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	return table.timestamp, true
+	return table.Timestamp(), true
 }
 
 func (db *YuccaDB) validatePutTable(tableName, file string, replace bool) error {
@@ -51,7 +46,7 @@ func (db *YuccaDB) validatePutTable(tableName, file string, replace bool) error 
 	}
 
 	for _, table := range db.tables {
-		if table.table.File == file {
+		if table.File() == file {
 			return fmt.Errorf("file %q is already used by table %q", file, tableName)
 		}
 	}
@@ -83,19 +78,16 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 	}
 
 	oldTable, hadOldTable := db.tables[tableName]
-	db.tables[tableName] = yuccaTable{
-		table:     table,
-		timestamp: time.Now(),
-	}
+	db.tables[tableName] = table
 	db.mu.Unlock()
 
 	if !hadOldTable {
 		return nil
 	}
 
-	db.Logger.Debugf("Remove old table file: %q\n", oldTable.table.File)
+	db.Logger.Debugf("Remove old table file: %q\n", oldTable.File())
 
-	if err = os.Remove(oldTable.table.File); err != nil {
+	if err = os.Remove(oldTable.File()); err != nil {
 		return fmt.Errorf("failed to remove old table file: %w", err)
 	}
 
@@ -118,7 +110,7 @@ func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 		return Result{}, ErrTableNotFound
 	}
 
-	res, err := table.table.Get(key)
+	res, err := table.Get(key)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to get value: %w", err)
 	}

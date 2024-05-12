@@ -23,10 +23,19 @@ type indexEntry struct {
 }
 
 type Table struct {
-	File          string
+	file          string
 	index         []indexEntry
+	timestamp     time.Time
 	indexInterval int64
 	Logger        logger.Logger
+}
+
+func (t *Table) File() string {
+	return t.file
+}
+
+func (t *Table) Timestamp() time.Time {
+	return t.timestamp
 }
 
 func BuildTable(csvFile string, logger logger.Logger) (*Table, error) {
@@ -92,11 +101,11 @@ func (t *Table) load(csvFile string) error {
 		index = append(index, indexEntry{lastKey, lastOffset})
 	}
 
-	t.File = csvFile
+	t.file = csvFile
 	t.index = index
+	t.timestamp = time.Now()
 
-	time1 := time.Now()
-	t.Logger.Infof("Loaded %q with %d items (%v)", csvFile, humanize.Comma(count), time1.Sub(time0))
+	t.Logger.Infof("Loaded %q with %d items (%v)", csvFile, humanize.Comma(count), t.timestamp.Sub(time0))
 
 	return nil
 }
@@ -127,9 +136,9 @@ func (t *Table) Get(key string) (Result, error) {
 		return Result{nil, profile}, nil
 	}
 
-	file, err := os.Open(t.File)
+	file, err := os.Open(t.file)
 	if err != nil {
-		return Result{nil, profile}, fmt.Errorf("os.Open(%q): %w", t.File, err)
+		return Result{nil, profile}, fmt.Errorf("os.Open(%q): %w", t.file, err)
 	}
 	defer file.Close()
 
@@ -180,13 +189,13 @@ func (t *Table) searchIndex(key string) (offset, limit int64) {
 	return t.index[idx-1].offset, t.index[idx].offset
 }
 
-func (t *Table) scanFile(f *os.File, key string, offset, limit int64) ([]string, error) {
+func (t *Table) scanFile(file *os.File, key string, offset, limit int64) ([]string, error) {
 	var scannedLines int64
 
-	reader := csv.NewReader(f)
+	reader := csv.NewReader(file)
 	reader.ReuseRecord = true
 
-	_, err := f.Seek(offset, 0)
+	_, err := file.Seek(offset, 0)
 	if err != nil {
 		return nil, fmt.Errorf("file.Seek: %w", err)
 	}
