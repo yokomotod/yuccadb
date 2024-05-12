@@ -9,14 +9,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/yokomotod/yuccadb/internals/humanize"
 	"github.com/yokomotod/yuccadb/logger"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
 
 const (
 	defaultIndexInterval = 1_000
-	expectedCols         = 2
 )
 
 type indexEntry struct {
@@ -97,8 +95,7 @@ func (t *SSTable) load(csvFile string) error {
 	t.index = index
 
 	time1 := time.Now()
-	p := message.NewPrinter(language.English)
-	t.Logger.Infof(p.Sprintf("Loaded %q with %d items (%s)", csvFile, count, time1.Sub(time0).String()))
+	t.Logger.Infof("Loaded %q with %d items (%v)", csvFile, humanize.Comma(count), time1.Sub(time0))
 
 	return nil
 }

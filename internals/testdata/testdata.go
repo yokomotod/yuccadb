@@ -5,21 +5,12 @@ import (
 	"log"
 	"os"
 	"strconv"
+
+	"github.com/yokomotod/yuccadb/internals/humanize"
 )
 
-func toHumanReadable(n int) string {
-	unit := ""
-	units := []string{"k", "m", "g", "t"}
-
-	for i := 0; n >= 1_000; n, i = n/1_000, i+1 {
-		unit = units[i]
-	}
-
-	return strconv.Itoa(n) + unit
-}
-
 func TestCsvPath(outputDir string, csvSize int) string {
-	suffix := toHumanReadable(csvSize)
+	suffix := humanize.Unit(csvSize)
 	return outputDir + "/test" + suffix + ".csv"
 }
 
