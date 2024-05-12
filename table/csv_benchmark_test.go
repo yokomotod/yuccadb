@@ -15,15 +15,9 @@ import (
 	"github.com/yokomotod/yuccadb/internals/testdata"
 )
 
-var tableSize int
-
-func init() {
-	flag.IntVar(&tableSize, "size", 1_000_000, "size of the table")
-}
+const tableSize = 1_000_000
 
 func TestMain(m *testing.M) {
-	flag.Parse()
-
 	if flag.Lookup("test.bench") != nil {
 		_, err := testdata.GenTestCsv("../testdata", tableSize)
 		if err != nil {

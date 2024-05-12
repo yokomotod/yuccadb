@@ -25,15 +25,9 @@ import (
 // BenchmarkDB-8           	   37995	     39326 ns/op
 // BenchmarkDBParallel-8   	   70704	     20128 ns/op
 
-var tableSize int
-
-func init() {
-	flag.IntVar(&tableSize, "size", 1_000_000, "size of the table")
-}
+const tableSize = 1_000_000
 
 func TestMain(m *testing.M) {
-	flag.Parse()
-
 	if flag.Lookup("test.bench") != nil {
 		_, err := testdata.GenTestCsv("./testdata", tableSize)
 		if err != nil {
@@ -57,10 +51,6 @@ func BenchmarkDB(b *testing.B) {
 
 	b.ResetTimer()
 
-	// total := table.Profile{}
-
-	// startTime := time.Now()
-
 	for keySeed := 0; keySeed < b.N; keySeed++ {
 		key := fmt.Sprintf("%010d", keySeed)
 
@@ -73,14 +63,8 @@ func BenchmarkDB(b *testing.B) {
 			b.Fatalf("key %q does not exist", key)
 		}
 
-		// total.SearchOffset += res.Profile.SearchOffset
-		// total.Open += res.Profile.Open
-		// total.Seek += res.Profile.Seek
-		// total.Scan += res.Profile.Scan
-
 		keySeed++
 	}
-	// log.Printf("N: %d, time: %v, total: %+v\n", b.N, time.Since(startTime), total)
 }
 
 func BenchmarkDBParallel(b *testing.B) {
