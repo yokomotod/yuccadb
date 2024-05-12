@@ -1,6 +1,7 @@
 package yuccadb_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/yokomotod/yuccadb"
 	"github.com/yokomotod/yuccadb/internals/testdata"
+	"github.com/yokomotod/yuccadb/logger"
+	yuccaTable "github.com/yokomotod/yuccadb/table"
 )
 
 // const (
@@ -52,35 +55,81 @@ func TestDB(t *testing.T) {
 	}
 
 	db := yuccadb.NewYuccaDB()
+	db.Logger = &logger.DefaultLogger{Level: logger.Warning}
 
 	if err := db.PutTable("test", testFile, false); err != nil {
 		t.Fatalf("db.PutTable: %v", err)
 	}
 
 	cases := []struct {
-		name          string
-		db            *yuccadb.YuccaDB
-		key           string
-		want          []string
-		wantKeyExists bool
+		name string
+		key  string
+		want []string
 	}{
-		{"key exists on index", db, "0000000000", []string{"0"}, true},
-		{"key does not exist on index", db, "0000000999", []string{"999"}, true},
-		{"last key", db, fmt.Sprintf("%010d", tableSize-1), []string{strconv.Itoa(tableSize - 1)}, true},
-		{"before last key", db, fmt.Sprintf("%010d", tableSize-2), []string{strconv.Itoa(tableSize - 2)}, true},
-		{"not found but middle of keys", db, "0000000999x", nil, false},
+		{"key exists on index", "0000000000", []string{"0"}},
+		{"key does not exist on index", "0000000999", []string{"999"}},
+		{"last key", fmt.Sprintf("%010d", tableSize-1), []string{strconv.Itoa(tableSize - 1)}},
+		{"before last key", fmt.Sprintf("%010d", tableSize-2), []string{strconv.Itoa(tableSize - 2)}},
+		{"not found but middle of keys", "0000000999x", nil},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			testDBCase(t, c.db, "test", c.key, c.want, c.wantKeyExists)
+			testDBGetValue(t, db, "test", c.key, c.want)
 		})
 	}
 }
 
-func testDBCase(t *testing.T, db *yuccadb.YuccaDB, tableName, key string, want []string, wantKeyExists bool) {
+func TestDBBulk(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+
+	tableSize := 10_000
+
+	testFile, err := testdata.GenTestCsv(tempDir, tableSize)
+	if err != nil {
+		t.Fatalf("GenTestCsv: %v", err)
+	}
+
+	db := yuccadb.NewYuccaDB()
+	db.Logger = &logger.DefaultLogger{Level: logger.Warning}
+
+	if err := db.PutTable("test", testFile, false); err != nil {
+		t.Fatalf("db.PutTable: %v", err)
+	}
+
+	cases2 := []struct {
+		name    string
+		keys    []string
+		want    [][]string
+		wantErr error
+	}{
+		{"key exists on same chunk", []string{"0000000000", "0000000001"}, [][]string{{"0"}, {"1"}}, nil},
+		{
+			"key exists on another chunk",
+			[]string{"0000000123", "0000001234", "0000001999"},
+			[][]string{{"123"}, {"1234"}, {"1999"}},
+			nil,
+		},
+		{"one key", []string{"0000000000"}, [][]string{{"0"}}, nil},
+		{"some key not found", []string{"0000001234", "0000001xxx"}, [][]string{{"1234"}, nil}, nil},
+		{"all key not found", []string{"0000001xxx", "0000002xxx"}, [][]string{nil, nil}, nil},
+		{"keys not sorted", []string{"0000000001", "0000000000"}, nil, yuccaTable.ErrKeysNotSorted},
+	}
+
+	for _, c := range cases2 {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			testDBBulkGetValues(t, db, "test", c.keys, c.want, c.wantErr)
+		})
+	}
+}
+
+func testDBGetValue(t *testing.T, db *yuccadb.YuccaDB, tableName, key string, want []string) {
 	t.Helper()
 
 	res, err := db.GetValue(tableName, key)
@@ -88,12 +137,27 @@ func testDBCase(t *testing.T, db *yuccadb.YuccaDB, tableName, key string, want [
 		t.Fatal(err)
 	}
 
-	if (res.Values != nil) != wantKeyExists {
-		t.Fatalf("expected keyExists %t, but got %t", wantKeyExists, (res.Values != nil))
+	if !reflect.DeepEqual(res.Values, want) {
+		t.Fatalf("expected %v, but got %v", want, res.Values)
+	}
+}
+
+func testDBBulkGetValues(
+	t *testing.T, db *yuccadb.YuccaDB, tableName string, keys []string, want [][]string, wantErr error,
+) {
+	t.Helper()
+
+	res, err := db.BulkGetValues(tableName, keys)
+	if err != nil && wantErr == nil {
+		t.Fatal(err)
 	}
 
 	if !reflect.DeepEqual(res.Values, want) {
 		t.Fatalf("expected %v, but got %v", want, res.Values)
+	}
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected error %q, but got %q", wantErr, err)
 	}
 }
 

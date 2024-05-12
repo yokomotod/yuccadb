@@ -8,18 +8,18 @@ import (
 	"time"
 
 	"github.com/yokomotod/yuccadb/logger"
-	"github.com/yokomotod/yuccadb/table"
+	yuccaTable "github.com/yokomotod/yuccadb/table"
 )
 
 type YuccaDB struct {
-	tables map[string]*table.Table
+	tables map[string]*yuccaTable.Table
 	mu     sync.RWMutex
 	Logger logger.Logger
 }
 
 func NewYuccaDB() *YuccaDB {
 	db := &YuccaDB{
-		tables: make(map[string]*table.Table),
+		tables: make(map[string]*yuccaTable.Table),
 		Logger: &logger.DefaultLogger{
 			Level: logger.Warning,
 		},
@@ -64,7 +64,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 		return err
 	}
 
-	table, err := table.BuildTable(file, db.Logger)
+	table, err := yuccaTable.BuildTable(file, db.Logger)
 	if err != nil {
 		return fmt.Errorf("table.BuildTable: %w", err)
 	}
@@ -94,29 +94,38 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 	return nil
 }
 
-type Result struct {
-	Values  []string
-	Profile table.Profile
-}
-
 var ErrTableNotFound = errors.New("table not found")
 
-func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
+func (db *YuccaDB) GetValue(tableName, key string) (yuccaTable.Result, error) {
 	db.mu.RLock()
 	table, tableExists := db.tables[tableName]
 	db.mu.RUnlock()
 
 	if !tableExists {
-		return Result{}, ErrTableNotFound
+		return yuccaTable.Result{}, ErrTableNotFound
 	}
 
 	res, err := table.Get(key)
 	if err != nil {
-		return Result{}, fmt.Errorf("table.Get: %w", err)
+		return yuccaTable.Result{}, fmt.Errorf("table.Get: %w", err)
 	}
 
-	return Result{
-		Values:  res.Values,
-		Profile: res.Profile,
-	}, nil
+	return res, nil
+}
+
+func (db *YuccaDB) BulkGetValues(tableName string, keys []string) (yuccaTable.BulkResult, error) {
+	db.mu.RLock()
+	table, tableExists := db.tables[tableName]
+	db.mu.RUnlock()
+
+	if !tableExists {
+		return yuccaTable.BulkResult{}, ErrTableNotFound
+	}
+
+	res, err := table.BulkGet(keys)
+	if err != nil {
+		return yuccaTable.BulkResult{}, fmt.Errorf("table.Get: %w", err)
+	}
+
+	return res, nil
 }
