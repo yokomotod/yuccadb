@@ -1,4 +1,4 @@
-package sstable
+package table
 
 import (
 	"encoding/csv"
@@ -22,15 +22,15 @@ type indexEntry struct {
 	offset int64
 }
 
-type SSTable struct {
+type Table struct {
 	File          string
 	index         []indexEntry
 	indexInterval int64
 	Logger        logger.Logger
 }
 
-func BuildSSTable(csvFile string, logger logger.Logger) (*SSTable, error) {
-	table := &SSTable{
+func BuildTable(csvFile string, logger logger.Logger) (*Table, error) {
+	table := &Table{
 		indexInterval: defaultIndexInterval,
 		Logger:        logger,
 	}
@@ -43,7 +43,7 @@ func BuildSSTable(csvFile string, logger logger.Logger) (*SSTable, error) {
 	return table, nil
 }
 
-func (t *SSTable) load(csvFile string) error {
+func (t *Table) load(csvFile string) error {
 	time0 := time.Now()
 
 	file, err := os.Open(csvFile)
@@ -112,7 +112,7 @@ type Result struct {
 	Profile Profile
 }
 
-func (t *SSTable) Get(key string) (Result, error) {
+func (t *Table) Get(key string) (Result, error) {
 	profile := Profile{}
 	time1 := time.Now()
 
@@ -151,7 +151,7 @@ func (t *SSTable) Get(key string) (Result, error) {
 	return Result{value, profile}, nil
 }
 
-func (t *SSTable) searchIndex(key string) (offset, limit int64) {
+func (t *Table) searchIndex(key string) (offset, limit int64) {
 	idx := sort.Search(len(t.index), func(i int) bool {
 		return t.index[i].key >= key
 	})
@@ -179,7 +179,7 @@ func (t *SSTable) searchIndex(key string) (offset, limit int64) {
 	return t.index[idx-1].offset, t.index[idx].offset
 }
 
-func (t *SSTable) scanFile(f *os.File, key string, offset, limit int64) ([]string, error) {
+func (t *Table) scanFile(f *os.File, key string, offset, limit int64) ([]string, error) {
 	var scannedLines int64
 
 	reader := csv.NewReader(f)

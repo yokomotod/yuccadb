@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/yokomotod/yuccadb/logger"
-	"github.com/yokomotod/yuccadb/sstable"
+	"github.com/yokomotod/yuccadb/table"
 )
 
 type yuccaTable struct {
-	ssTable   *sstable.SSTable
+	table     *table.Table
 	timestamp time.Time
 }
 
@@ -51,7 +51,7 @@ func (db *YuccaDB) validatePutTable(tableName, file string, replace bool) error 
 	}
 
 	for _, table := range db.tables {
-		if table.ssTable.File == file {
+		if table.table.File == file {
 			return fmt.Errorf("file %q is already used by table %q", file, tableName)
 		}
 	}
@@ -61,7 +61,7 @@ func (db *YuccaDB) validatePutTable(tableName, file string, replace bool) error 
 
 func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 	db.mu.RLock()
-	// pre-validate before heavy BuildSSTable process
+	// pre-validate before heavy BuildTable process
 	err := db.validatePutTable(tableName, file, replace)
 	db.mu.RUnlock()
 
@@ -69,7 +69,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 		return err
 	}
 
-	table, err := sstable.BuildSSTable(file, db.Logger)
+	table, err := table.BuildTable(file, db.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
@@ -84,7 +84,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 
 	oldTable, hadOldTable := db.tables[tableName]
 	db.tables[tableName] = yuccaTable{
-		ssTable:   table,
+		table:     table,
 		timestamp: time.Now(),
 	}
 	db.mu.Unlock()
@@ -93,9 +93,9 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 		return nil
 	}
 
-	db.Logger.Debugf("Remove old table file: %q\n", oldTable.ssTable.File)
+	db.Logger.Debugf("Remove old table file: %q\n", oldTable.table.File)
 
-	if err = os.Remove(oldTable.ssTable.File); err != nil {
+	if err = os.Remove(oldTable.table.File); err != nil {
 		return fmt.Errorf("failed to remove old table file: %w", err)
 	}
 
@@ -104,7 +104,7 @@ func (db *YuccaDB) PutTable(tableName, file string, replace bool) error {
 
 type Result struct {
 	Values  []string
-	Profile sstable.Profile
+	Profile table.Profile
 }
 
 var ErrTableNotFound = errors.New("table not found")
@@ -118,7 +118,7 @@ func (db *YuccaDB) GetValue(tableName, key string) (Result, error) {
 		return Result{}, ErrTableNotFound
 	}
 
-	res, err := table.ssTable.Get(key)
+	res, err := table.table.Get(key)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to get value: %w", err)
 	}

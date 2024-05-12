@@ -1,5 +1,5 @@
 // compare csv.Reader vs bufio.Scanner performance
-package sstable_test
+package table_test
 
 import (
 	"bufio"

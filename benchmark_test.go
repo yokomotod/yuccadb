@@ -57,7 +57,7 @@ func BenchmarkDB(b *testing.B) {
 
 	b.ResetTimer()
 
-	// total := sstable.Profile{}
+	// total := table.Profile{}
 
 	// startTime := time.Now()
 
